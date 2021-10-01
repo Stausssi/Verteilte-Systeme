@@ -2,8 +2,12 @@ import java.io.*;
 import java.util.Calendar;
 import java.util.Scanner;
 
+
 public class InputOutput {
     public static void main(String[] args) throws IOException {
+
+
+
         File testfile = new File("inputOutput.txt");
         if (testfile.createNewFile() || testfile.exists()) {
             System.out.println("Writing to file...");
@@ -21,7 +25,7 @@ public class InputOutput {
     }
 
 
-    private static void writeToFile(File file, String text, boolean append) throws IOException {
+    public static void writeToFile(File file, String text, boolean append) throws IOException {
         if (file.exists() && file.canWrite()) {
             FileWriter writer = new FileWriter(file, append);
             writer.write(Calendar.getInstance().getTime() + ": " + text + "\n");
@@ -31,7 +35,7 @@ public class InputOutput {
         }
     }
 
-    private static String readFile(File file) throws FileNotFoundException {
+    public static String readFile(File file) throws FileNotFoundException {
         if (file.exists() && file.canRead()) {
             Scanner reader = new Scanner(file);
             StringBuilder textBuilder = new StringBuilder();
