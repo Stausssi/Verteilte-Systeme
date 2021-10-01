@@ -15,7 +15,7 @@ public class InputOutput {
             writeToFile(testFile, "Holy smokes zweiter Text", true);
             System.out.println("Done!");
 
-            System.out.println("Reading from file..."   );
+            System.out.println("Reading from file...");
             System.out.println("File content:\n" + readFile(testFile));
             System.out.println("Done!");
         }
@@ -41,7 +41,10 @@ public class InputOutput {
                 textBuilder.append(reader.nextLine()).append("\n");
             }
             reader.close();
-            textBuilder.setLength(textBuilder.length() - 1);
+            if (textBuilder.length() > 0) {
+                textBuilder.setLength(textBuilder.length() - 1);
+            }
+
             return textBuilder.toString();
         } else {
             return "Couldn't read from file!";
