@@ -5,21 +5,18 @@ import java.util.Scanner;
 
 public class InputOutput {
     public static void main(String[] args) throws IOException {
-
-
-
-        File testfile = new File("inputOutput.txt");
-        if (testfile.createNewFile() || testfile.exists()) {
+        File testFile = new File("inputOutput.txt");
+        if (testFile.createNewFile() || testFile.exists()) {
             System.out.println("Writing to file...");
-            writeToFile(testfile, "Testtext zum Reinschreiben in das Ding", false);
+            writeToFile(testFile, "Testtext zum Reinschreiben in das Ding", false);
             System.out.println("Done!");
 
             System.out.println("Appending to file...");
-            writeToFile(testfile, "Holy smokes zweiter Text", true);
+            writeToFile(testFile, "Holy smokes zweiter Text", true);
             System.out.println("Done!");
 
-            System.out.println("Reading from file...");
-            System.out.println("File content:\n" + readFile(testfile));
+            System.out.println("Reading from file..."   );
+            System.out.println("File content:\n" + readFile(testFile));
             System.out.println("Done!");
         }
     }

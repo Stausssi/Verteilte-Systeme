@@ -8,17 +8,14 @@ public class FileRunnable implements Runnable {
 
     @Override
     public void run() {
-        File testfile = new File("inputOutput.txt");
-        Random randomgen = new Random();
+        File testFile = new File("inputOutput.txt");
+        Random randomGen = new Random();
         try {
-
-            if (testfile.createNewFile() || testfile.exists()) {
-
+            if (testFile.createNewFile() || testFile.exists()) {
                 for (int i = 0; i < 50; i++) {
-
-                    InputOutput.writeToFile(testfile,"Testtext von " + (Thread.currentThread().getName()), true);
-                    System.out.println(InputOutput.readFile(testfile));
-                    Thread.sleep(randomgen.nextInt(250));
+                    InputOutput.writeToFile(testFile, "Testtext von " + (Thread.currentThread().getName()), true);
+                    System.out.println(InputOutput.readFile(testFile));
+                    Thread.sleep(randomGen.nextInt(250));
                 }
             }
         } catch (IOException | InterruptedException e) {
