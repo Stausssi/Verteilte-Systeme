@@ -1,3 +1,5 @@
+package io;
+
 public class FileApplication {
     public static void main(String[] args) {
         FileCounter runnableObject = new FileCounter();
