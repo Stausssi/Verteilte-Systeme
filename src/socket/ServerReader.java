@@ -1,6 +1,8 @@
 package socket;
 
 import io.InputOutput;
+import messages.Message;
+import messages.ObjectMessageReader;
 
 import java.io.*;
 import java.net.Socket;
@@ -19,14 +21,16 @@ public class ServerReader implements Runnable {
             if (output.createNewFile() || output.exists()) {
                 BufferedReader server_reader = new BufferedReader(new InputStreamReader(serverSocket.getInputStream()));
                 PrintStream client_stream = new PrintStream(serverSocket.getOutputStream());
-                String reply;
+                Message reply;
+                ObjectMessageReader message_reader = new ObjectMessageReader();
                 while (true) {
-                    reply = server_reader.readLine();
-                    if (Objects.equals(reply, "last message")) {
+                    reply = message_reader.read(serverSocket);
+                    System.out.println(reply.getSender());
+                    if (Objects.equals(reply.getSender(), "last message")) {
                         String[] message = InputOutput.readFile(output).split("\n");
                         client_stream.println(message[message.length - 1]);
                     }
-                    InputOutput.writeToFile(output, reply, true);
+                    InputOutput.writeToFile(output, reply.getSender(), true);
                     client_stream.println(InputOutput.readFile(output).replace("\n", "\t"));
                 }
             }

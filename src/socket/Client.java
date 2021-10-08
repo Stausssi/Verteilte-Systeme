@@ -1,5 +1,7 @@
 package socket;
 
+import messages.Message;
+
 import java.io.*;
 import java.net.Socket;
 import java.sql.SQLOutput;
@@ -38,12 +40,13 @@ public class Client implements Runnable {
             BufferedReader client_reader = new BufferedReader(new InputStreamReader(server_stream));
             String reply;
             do {
+                Message message = new Message();
                 if(counter % 20 ==0) {
-                    client_printstream.println("last message");
+                    message.setSender("last message");
                     System.out.println("Client received last message: " + client_reader.readLine());
                 }
                 else {
-                    client_printstream.println("Hallo Server: Nachricht Nr" + counter);
+                    message.setSender("Hallo Server: Nachricht Nr" + counter);
                 }
                 reply = client_reader.readLine().replace("\t", "\n");
                 Thread.sleep(100);
