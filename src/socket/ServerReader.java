@@ -2,7 +2,7 @@ package socket;
 
 import io.InputOutput;
 import messages.Message;
-import messages.ObjectMessageReader;
+import messages.ObjectMessageHandler;
 
 import java.io.*;
 import java.net.Socket;
@@ -15,23 +15,31 @@ public class ServerReader implements Runnable {
     }
     @Override
     public void run() {
-
         File output = new File("socketoutput.txt");
         try {
             if (output.createNewFile() || output.exists()) {
-                BufferedReader server_reader = new BufferedReader(new InputStreamReader(serverSocket.getInputStream()));
-                PrintStream client_stream = new PrintStream(serverSocket.getOutputStream());
-                Message reply;
-                ObjectMessageReader message_reader = new ObjectMessageReader();
+                Message incomingMessage;
+                ObjectMessageHandler messageHandler = new ObjectMessageHandler();
+
                 while (true) {
-                    reply = message_reader.read(serverSocket);
-                    System.out.println(reply.getSender());
-                    if (Objects.equals(reply.getSender(), "last message")) {
-                        String[] message = InputOutput.readFile(output).split("\n");
-                        client_stream.println(message[message.length - 1]);
+                    Message outgoingMessage = new Message();
+                    outgoingMessage.setSender("Server Socket");
+
+                    // Read client message
+                    incomingMessage = messageHandler.read(serverSocket);
+                    outgoingMessage.setReceiver(incomingMessage.getSender());
+
+                    if (Objects.equals(incomingMessage.getPayload(), "last message")) {
+                        String[] message = InputOutput.readFile(output).split("\n\n");
+
+                        outgoingMessage.setPayload(message[message.length - 1]);
+                        messageHandler.write(serverSocket, outgoingMessage);
                     }
-                    InputOutput.writeToFile(output, reply.getSender(), true);
-                    client_stream.println(InputOutput.readFile(output).replace("\n", "\t"));
+
+                    // Reply to client
+                    InputOutput.writeToFile(output, incomingMessage.toString() + '\n', true, false);
+                    outgoingMessage.setPayload(InputOutput.readFile(output).replace("\n", "\t"));
+                    messageHandler.write(serverSocket, outgoingMessage);
                 }
             }
         } catch (IOException e) {

@@ -5,21 +5,22 @@ import java.time.Instant;
 
 /**
  * This class is a sendable message object , further
- information may be added
+ * information may be added
  */
 
 public class Message implements Serializable {
-    private String sender ;
-    private String receiver ;
-    private Object payload ;
+    private String sender;
+    private String receiver;
+    private Object payload;
     private Instant time = Instant.now();
-    private String type ; // may be an enum
+    private String type; // may be an enum
     private int sequenceNo = -1;
+
     /**
      * Default - Constructor
      */
-    public Message ()
-    {}
+    public Message() {
+    }
     /* GETTER - SETTER */
 
     public String getSender() {
@@ -68,5 +69,16 @@ public class Message implements Serializable {
 
     public void setSequenceNo(int sequenceNo) {
         this.sequenceNo = sequenceNo;
+    }
+
+    @Override
+    public String toString() {
+        return "Message:\n" +
+                "\tsender='" + sender + "'\n" +
+                "\treceiver='" + receiver + "'\n" +
+                "\tpayload='" + payload + "'\n" +
+                "\ttime=" + time + '\n' +
+                "\ttype='" + type + "'\n" +
+                "\tsequenceNo=" + sequenceNo;
     }
 }

@@ -25,9 +25,14 @@ public class InputOutput {
 
 
     public static void writeToFile(File file, String text, boolean append) throws IOException {
+        writeToFile(file, text, append, true);
+    }
+
+    public static void writeToFile(File file, String text, boolean append, boolean writeDate) throws IOException {
         if (file.exists() && file.canWrite()) {
             FileWriter writer = new FileWriter(file, append);
-            writer.write(Calendar.getInstance().getTime() + ": " + text + "\n");
+            String dateString = writeDate ? Calendar.getInstance().getTime() + ": " : "";
+            writer.write( dateString + text + "\n");
             writer.close();
         } else {
             System.out.println("Can't write to that file!");

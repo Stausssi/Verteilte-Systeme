@@ -1,17 +1,24 @@
 package socket;
 
 import messages.Message;
+import messages.ObjectMessageHandler;
 
 import java.io.*;
 import java.net.Socket;
-import java.sql.SQLOutput;
-import java.util.Objects;
+import java.util.Random;
 
 /**
  * This class is used as an example for a Client Socket
  * this could be a own thread
  */
 public class Client implements Runnable {
+    private final String name;
+    private static int count;
+
+    public Client(String name) {
+        this.name = name;
+    }
+
     /**
      * this method initialises the client
      *
@@ -22,9 +29,8 @@ public class Client implements Runnable {
      * established
      */
     public Socket initialise(String dns, int port) throws IOException {
-        Socket clientSocket = new Socket(dns, port);
         // no need for an additional bind , but could be done here
-        return clientSocket;
+        return new Socket(dns, port);
     }
 
     @Override
@@ -32,30 +38,38 @@ public class Client implements Runnable {
         try {
             Thread.sleep(1000);
             Socket clientSocket = this.initialise("localhost", 4444);
+            Random random = new Random();
 
-            OutputStream client_stream = clientSocket.getOutputStream();
-            PrintStream client_printstream = new PrintStream(client_stream, true);
-            int counter = 0;
-            InputStream server_stream = clientSocket.getInputStream();
-            BufferedReader client_reader = new BufferedReader(new InputStreamReader(server_stream));
-            String reply;
+            Message incomingMessage;
+            ObjectMessageHandler messageHandler = new ObjectMessageHandler();
+
             do {
                 Message message = new Message();
-                if(counter % 20 ==0) {
-                    message.setSender("last message");
-                    System.out.println("Client received last message: " + client_reader.readLine());
-                }
-                else {
-                    message.setSender("Hallo Server: Nachricht Nr" + counter);
-                }
-                reply = client_reader.readLine().replace("\t", "\n");
-                Thread.sleep(100);
-                counter++;
-            }while(true);
+                message.setSender(this.name);
+                message.setSequenceNo(count());
+                message.setReceiver("Server Socket");
+                message.setType("String");
 
+                if (message.getSequenceNo() % 20 == 0) {
+                    message.setPayload("last message");
+                    messageHandler.write(clientSocket, message);
+                    System.out.println("Client received last message:\n" + messageHandler.read(clientSocket));
+                } else {
+                    message.setPayload("Dies ist eine Nachricht an den Server");
+                    messageHandler.write(clientSocket, message);
+                }
 
+                incomingMessage = messageHandler.read(clientSocket);
+                String fileContent = incomingMessage.getPayload().toString().replace("\t", "\n");
+
+                Thread.sleep(random.nextInt(200));
+            } while (true);
         } catch (IOException | InterruptedException ioException) {
             ioException.printStackTrace();
         }
+    }
+
+    private synchronized int count() {
+        return count++;
     }
 }
