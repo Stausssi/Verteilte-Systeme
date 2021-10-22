@@ -27,8 +27,9 @@ public class Server implements Runnable {
                 InetAddress.getByName(dns)
         );
 
-        while(true){
+        while (true) {
             Socket connection = serverSocket.accept();
+
             ServerReader reader = new ServerReader(connection);
             Thread reader_thread = new Thread(reader);
             reader_thread.start();

@@ -18,28 +18,24 @@ public class ServerReader implements Runnable {
         File output = new File("socketoutput.txt");
         try {
             if (output.createNewFile() || output.exists()) {
+                System.out.println("New connection");
+
                 Message incomingMessage;
-                ObjectMessageHandler messageHandler = new ObjectMessageHandler();
+                ObjectMessageHandler messageHandler = new ObjectMessageHandler(serverSocket);
 
-                while (true) {
-                    Message outgoingMessage = new Message();
-                    outgoingMessage.setSender("Server Socket");
-
+                while (!serverSocket.isClosed()) {
                     // Read client message
-                    incomingMessage = messageHandler.read(serverSocket);
-                    outgoingMessage.setReceiver(incomingMessage.getSender());
+                    incomingMessage = messageHandler.read();
 
-                    if (Objects.equals(incomingMessage.getPayload(), "last message")) {
-                        String[] message = InputOutput.readFile(output).split("\n\n");
+                    Message reply = new Message();
+                    reply.setSender(incomingMessage.getSender());
+                    reply.setReceiver(incomingMessage.getReceiver());
+                    reply.setPayload(incomingMessage.getPayload());
+                    reply.setType(incomingMessage.getType());
+                    reply.setTime(incomingMessage.getTime());
+                    reply.setSequenceNo(incomingMessage.getSequenceNo());
 
-                        outgoingMessage.setPayload(message[message.length - 1]);
-                        messageHandler.write(serverSocket, outgoingMessage);
-                    }
-
-                    // Reply to client
-                    InputOutput.writeToFile(output, incomingMessage.toString() + '\n', true, false);
-                    outgoingMessage.setPayload(InputOutput.readFile(output).replace("\n", "\t"));
-                    messageHandler.write(serverSocket, outgoingMessage);
+                    messageHandler.write(reply);
                 }
             }
         } catch (IOException e) {

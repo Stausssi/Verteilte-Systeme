@@ -8,14 +8,18 @@ import java.net.Socket;
  * from/to a socket
  */
 public class ObjectMessageHandler {
+    private final Socket socket;
+
+    public ObjectMessageHandler(Socket socket) {
+        this.socket = socket;
+    }
     /**
      * this method reads objects from a given socket
      *
-     * @param socket socket to read an object from
      * @return the message object or null , in case of an
      * error
      */
-    public Message read(Socket socket) {
+    public Message read() {
         Message ret = null;
         try {
             InputStream is = socket.getInputStream();
@@ -27,7 +31,7 @@ public class ObjectMessageHandler {
         return ret;
     }
 
-    public void write(Socket socket, Message message) {
+    public void write(Message message) {
         try {
             OutputStream os = socket.getOutputStream();
             ObjectOutputStream ois = new ObjectOutputStream(os);

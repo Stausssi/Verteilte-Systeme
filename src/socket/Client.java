@@ -12,7 +12,7 @@ import java.util.Random;
  * this could be a own thread
  */
 public class Client implements Runnable {
-    private final String name;
+    public final String name;
     private static int count;
 
     public Client(String name) {
@@ -41,7 +41,7 @@ public class Client implements Runnable {
             Random random = new Random();
 
             Message incomingMessage;
-            ObjectMessageHandler messageHandler = new ObjectMessageHandler();
+            ObjectMessageHandler messageHandler = new ObjectMessageHandler(clientSocket);
 
             do {
                 Message message = new Message();
@@ -52,14 +52,14 @@ public class Client implements Runnable {
 
                 if (message.getSequenceNo() % 20 == 0) {
                     message.setPayload("last message");
-                    messageHandler.write(clientSocket, message);
-                    System.out.println("Client received last message:\n" + messageHandler.read(clientSocket));
+                    messageHandler.write(message);
+                    System.out.println("Client received last message:\n" + messageHandler.read());
                 } else {
                     message.setPayload("Dies ist eine Nachricht an den Server");
-                    messageHandler.write(clientSocket, message);
+                    messageHandler.write(message);
                 }
 
-                incomingMessage = messageHandler.read(clientSocket);
+                incomingMessage = messageHandler.read();
                 String fileContent = incomingMessage.getPayload().toString().replace("\t", "\n");
 
                 Thread.sleep(random.nextInt(200));
