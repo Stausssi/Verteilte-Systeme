@@ -4,6 +4,8 @@ import java.io.*;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * This class is used as an example for a Server Socket
@@ -13,7 +15,7 @@ public class Server implements Runnable {
     // this max client definition is not available in "old "
     // implementations
     public static final int maxIncomingClients = 100;
-
+    public static List<Socket> socketConnections = new ArrayList<>();
     /**
      * this method initialises the server
      *
@@ -29,6 +31,8 @@ public class Server implements Runnable {
 
         while (true) {
             Socket connection = serverSocket.accept();
+
+            socketConnections.add(connection);
 
             ServerReader reader = new ServerReader(connection);
             Thread reader_thread = new Thread(reader);

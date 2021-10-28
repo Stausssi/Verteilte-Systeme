@@ -1,18 +1,18 @@
 package socket;
 
-import io.InputOutput;
 import messages.Message;
 import messages.ObjectMessageHandler;
 
 import java.io.*;
 import java.net.Socket;
-import java.util.Objects;
 
 public class ServerReader implements Runnable {
     private final Socket serverSocket;
-    public ServerReader(Socket serverSocket){
+
+    public ServerReader(Socket serverSocket) {
         this.serverSocket = serverSocket;
     }
+
     @Override
     public void run() {
         File output = new File("socketoutput.txt");
@@ -35,7 +35,11 @@ public class ServerReader implements Runnable {
                     reply.setTime(incomingMessage.getTime());
                     reply.setSequenceNo(incomingMessage.getSequenceNo());
 
-                    messageHandler.write(reply);
+                    // Broadcast message to every client
+                    for (Socket s : Server.socketConnections) {
+                        ObjectMessageHandler messageSender = new ObjectMessageHandler(s);
+                        messageSender.write(reply);
+                    }
                 }
             }
         } catch (IOException e) {
