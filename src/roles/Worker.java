@@ -10,10 +10,9 @@ import java.net.Socket;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
 
 public class Worker extends Client implements Serializable {
-    private final Role role;
+    private Role role;
     private final List<Message> messages = new ArrayList<>();
     private static final List<Worker> nodes = new ArrayList<>();
 
@@ -38,18 +37,19 @@ public class Worker extends Client implements Serializable {
             helloMessage.setSender(this.name);
             helloMessage.setPayload(this.role);
             messageHandler.write(helloMessage);
-            boolean messagesRetrieved = false;
+
+            boolean roleRequested = false;
 
             while (!clientSocket.isClosed()) {
                 Message reply = new Message();
                 reply.setSender(this.name);
                 reply.setTime(Instant.now());
 
-                if (this.role == Role.UNKNOWN && !messagesRetrieved) {
+                if (this.role == Role.UNKNOWN && !roleRequested) {
                     reply.setType("request");
                     reply.setReceiver(getCoordinator());
-//                    messageHandler.write(reply);
-                    messagesRetrieved = true;
+                    reply.setPayload("role");
+                    roleRequested = true;
                 }
 
                 incomingMessage = messageHandler.read();
@@ -57,7 +57,6 @@ public class Worker extends Client implements Serializable {
                 if (this.role == Role.COORDINATOR) {
                     messages.add(incomingMessage);
                 }
-
 
                 if ("node".equals(incomingMessage.getType()) &&
                         !this.name.equals(incomingMessage.getSender()) &&
@@ -72,24 +71,39 @@ public class Worker extends Client implements Serializable {
 
                     if ("request".equals(incomingMessage.getType())) {
                         if (this.role == Role.COORDINATOR) {
-                            reply.setType("messages");
-                            reply.setPayload(
-                                    messages.size() > 10 ?
-                                            new ArrayList<>(messages.subList(messages.size() - 10, messages.size())) :
-                                            messages
-                            );
+                            if ("messages".equals(incomingMessage.getPayload())) {
+                                reply.setType("messages");
+                                reply.setPayload(
+                                        messages.size() > 10 ?
+                                                new ArrayList<>(messages.subList(messages.size() - 10, messages.size())) :
+                                                messages
+                                );
+                            } else if ("role".equals(incomingMessage.getPayload())) {
+                                reply.setType("role");
+                                reply.setPayload(Role.WORKER);
+                            }
                         } else {
                             reply.setType("request");
                             reply.setReceiver(getCoordinator());
+                            reply.setPayload(incomingMessage.getPayload());
                             forwardTo = incomingMessage.getSender();
                         }
-
                     } else if ("messages".equals(incomingMessage.getType())) {
                         if (!forwardTo.equals("")) {
                             reply.setReceiver(forwardTo);
                             reply.setPayload(incomingMessage.getPayload());
 
                             forwardTo = "";
+                        }
+                    } else if ("role".equals(incomingMessage.getType())) {
+                        if (!forwardTo.equals("")) {
+                            reply.setReceiver(forwardTo);
+                            reply.setPayload(incomingMessage.getPayload());
+
+                            forwardTo = "";
+                        } else {
+                            this.role = (Role) incomingMessage.getPayload();
+                            logConsole("Role updated to: " + this.role);
                         }
                     }
                 }
