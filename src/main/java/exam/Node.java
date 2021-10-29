@@ -169,7 +169,7 @@ public class Node implements Runnable {
 
                 // Read incoming messages
                 while (!connection.isClosed()) {
-                    incomingMessage = messageHandler.read();
+//                    incomingMessage = messageHandler.read();
                 }
             }
         }
