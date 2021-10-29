@@ -2,6 +2,7 @@ package eu.boxwork.dhbw.examhelpers.rsa;
 
 import org.bouncycastle.crypto.AsymmetricBlockCipher;
 import org.bouncycastle.crypto.AsymmetricCipherKeyPair;
+import org.bouncycastle.crypto.CipherParameters;
 import org.bouncycastle.crypto.InvalidCipherTextException;
 import org.bouncycastle.crypto.engines.RSAEngine;
 import org.bouncycastle.crypto.params.AsymmetricKeyParameter;
@@ -138,7 +139,7 @@ public class RSAHelper
     public String decrypt(AsymmetricCipherKeyPair keypair, String encodedString)
     {
         StringBuilder value = new StringBuilder();
-        AsymmetricKeyParameter key = keypair.getPrivate();
+        CipherParameters key = keypair.getPrivate();
         AsymmetricBlockCipher e = new RSAEngine();
         e = new org.bouncycastle.crypto.encodings.PKCS1Encoding(e);
         e.init(false, key);
@@ -176,7 +177,7 @@ public class RSAHelper
     public String encrypt(AsymmetricCipherKeyPair keypair, String clearTxt)
     {
         StringBuilder value = new StringBuilder();
-        AsymmetricKeyParameter publicKey = keypair.getPublic();
+        AsymmetricKeyParameter publicKey = (AsymmetricKeyParameter) keypair.getPublic();
         AsymmetricBlockCipher e = new RSAEngine();
         e = new org.bouncycastle.crypto.encodings.PKCS1Encoding(e);
         e.init(true, publicKey);
