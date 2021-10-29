@@ -3,7 +3,8 @@ package socket;
 import messages.Message;
 import messages.ObjectMessageHandler;
 
-import java.io.*;
+import java.io.File;
+import java.io.IOException;
 import java.net.Socket;
 
 public class ServerReader implements Runnable {

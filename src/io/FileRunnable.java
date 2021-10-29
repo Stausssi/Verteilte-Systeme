@@ -2,8 +2,6 @@ package io;
 
 import java.io.File;
 import java.io.IOException;
-import java.lang.Thread;
-import java.lang.Runnable;
 import java.util.Random;
 
 public class FileRunnable implements Runnable {
