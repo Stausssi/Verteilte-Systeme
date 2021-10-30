@@ -22,18 +22,20 @@ public class Node implements Runnable {
 
     private final int port;
     private final String name;
-    private Role role;
+    private State state;
 
     private boolean allowNewConnections = true;
-    private final HashMap<InetAddress, Integer> connectedTo = new HashMap<>();
+    public final HashMap<InetAddress, Integer> connectedTo = new HashMap<>();
 
     // Create Threads for both the server and client socket
     private final SocketServer socketServer = new SocketServer();
     private final SocketClient socketClient = new SocketClient();
+    private final Raft leaderElection = new Raft(this);
 
     public Node(int port, String name) {
         this.port = port;
         this.name = name;
+        this.state = State.FOLLOWER;
     }
 
     /**
@@ -203,9 +205,11 @@ public class Node implements Runnable {
         // Create Threads for both the server and client socket
         Thread serverThread = new Thread(socketServer);
         Thread clientThread = new Thread(socketClient);
+        Thread raftThread = new Thread(leaderElection);
 
         serverThread.start();
         clientThread.start();
+        raftThread.start();
 
         try {
             serverThread.join();
