@@ -11,14 +11,8 @@ class Raft implements Runnable {
         @Override
         public void run() {
             while (raftNode.connectedTo.isEmpty()) {
-                System.out.println(raftNode.connectedTo.keySet());
-                try {
-                    wait(100);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
+                //System.out.println(raftNode.connectedTo.keySet());
             }
-
             boolean leader = checkLeader();
             if (!leader) {
                 startElection();
