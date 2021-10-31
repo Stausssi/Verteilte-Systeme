@@ -81,6 +81,19 @@ public class Node implements Runnable {
                             // Connect to the new node
                             socketClient.connectTo(connection.getInetAddress(), (Integer) incomingMessage.getPayload());
                         }
+                    } else if ("rsa".equalsIgnoreCase(incomingMessage.getType())) {
+                        logConsole("The new connection is the client!\n" + incomingMessage);
+
+                        // TODO: Either forward message to the coordinator or delegate tasks to every worker
+                        // For now, just answer with the primes
+                        Message primes = new Message();
+                        primes.setType("primes");
+                        primes.setPayload("17594063653378370033, 15251864654563933379");
+
+                        messageHandler.write(primes);
+
+                        logConsole("Primes sent!");
+                        connection.close();
                     } else {
                         logConsole("Invalid response!");
                         connection.close();

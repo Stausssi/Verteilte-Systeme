@@ -10,7 +10,7 @@ public abstract class MessageHelper {
     /**
      * This method checks if the given message is a request.
      *
-     * @param msg: The message to check
+     * @param msg The message to check
      * @return true, if the message is a request.
      */
     public static boolean isRequest(Message msg) {
@@ -20,7 +20,7 @@ public abstract class MessageHelper {
     /**
      * This method checks if the given message is a port request.
      *
-     * @param msg: The message to check
+     * @param msg The message to check
      * @return true, if the message is a port request.
      */
     public static boolean isPortRequest(Message msg) {
