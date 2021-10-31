@@ -5,10 +5,7 @@ import tasks.messages.ObjectMessageHandler;
 
 
 import java.io.IOException;
-import java.net.InetAddress;
-import java.net.ServerSocket;
-import java.net.Socket;
-import java.net.UnknownHostException;
+import java.net.*;
 import java.util.HashMap;
 
 /**
@@ -150,7 +147,7 @@ public class Node implements Runnable {
 
                 try {
                     // Check whether the response from the new socket was indeed a port request
-                    if ("request".equals(incomingMessage.getType()) && "port".equals(incomingMessage.getPayload())) {
+                    if (MessageHelper.isPortRequest(incomingMessage)) {
                         logConsole("Server requested port");
 
                         // Send the port of this socket server
@@ -214,6 +211,7 @@ public class Node implements Runnable {
         try {
             serverThread.join();
             clientThread.join();
+            raftThread.join();
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
