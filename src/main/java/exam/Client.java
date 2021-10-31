@@ -12,10 +12,10 @@ import java.util.Arrays;
  * This class represents the client, which will connect to the cluster of Nodes and send the RSA request.
  */
 public class Client {
-    private final String encrypted = "2d80afa14a65a7bf26636f97c89b43d5";
-    private final String publicKey = "268342277565109549360836262560222031507";
+    private static final String encrypted = "2d80afa14a65a7bf26636f97c89b43d5";
+    private static final String publicKey = "268342277565109549360836262560222031507";
 
-    public Client() {
+    private void work() {
         // Connect to any socket in the system
         try {
             Socket cluster = new Socket("localhost", 4444);
@@ -32,7 +32,7 @@ public class Client {
                 Message rsaInfo = new Message();
                 rsaInfo.setSender("Client");
                 rsaInfo.setType("rsa");
-                rsaInfo.setPayload("INSERT_INFORMATION_HERE");
+                rsaInfo.setPayload(publicKey);
                 messageHandler.write(rsaInfo);
 
                 // Now wait for the cluster to solve the key
@@ -49,11 +49,11 @@ public class Client {
 
                         // Create an RSA Helper
                         RSAHelper helper = new RSAHelper();
-                        if (helper.isValid(p, q, this.publicKey)) {
+                        if (helper.isValid(p, q, publicKey)) {
                             System.out.println("Primes are valid!");
-                            System.out.println("Decrypted text is: " + helper.decrypt(p, q, this.encrypted));
+                            System.out.println("Decrypted text is: " + helper.decrypt(p, q, encrypted));
                         } else {
-                            System.out.println("Primes dont fit");
+                            System.out.println("Primes dont fit!");
                         }
 
                         cluster.close();
@@ -69,6 +69,7 @@ public class Client {
     }
 
     public static void main(String[] args) {
-        new Client();
+        Client client = new Client();
+        client.work();
     }
 }

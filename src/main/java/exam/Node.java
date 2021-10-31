@@ -82,7 +82,11 @@ public class Node implements Runnable {
                             socketClient.connectTo(connection.getInetAddress(), (Integer) incomingMessage.getPayload());
                         }
                     } else if ("rsa".equalsIgnoreCase(incomingMessage.getType())) {
-                        logConsole("The new connection is the client!\n" + incomingMessage);
+                        logConsole("The new connection is the client!");
+
+                        String publicKey = (String) incomingMessage.getPayload();
+
+                        logConsole("Public Key: " + publicKey);
 
                         // TODO: Either forward message to the coordinator or delegate tasks to every worker
                         // For now, just answer with the primes
@@ -180,9 +184,9 @@ public class Node implements Runnable {
                 }
 
                 // Read incoming messages
-                while (!connection.isClosed()) {
+//                while (!connection.isClosed()) {
 //                    incomingMessage = messageHandler.read();
-                }
+//                }
             }
         }
 
