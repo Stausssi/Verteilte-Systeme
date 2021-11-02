@@ -2,6 +2,7 @@ package tasks.messages;
 
 import java.io.*;
 import java.net.Socket;
+import java.net.SocketException;
 
 /**
  * This class is used as an example for reading and writing Message-Objects
@@ -9,10 +10,20 @@ import java.net.Socket;
  */
 public class ObjectMessageHandler {
     private final Socket socket;
+    private ObjectInputStream inputStream;
+    private ObjectOutputStream outputStream;
 
     public ObjectMessageHandler(Socket socket) {
         this.socket = socket;
+        try {
+            outputStream = new ObjectOutputStream(socket.getOutputStream());
+            outputStream.flush();
+            inputStream = new ObjectInputStream(socket.getInputStream());
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
+
     /**
      * this method reads objects from a given socket
      *
@@ -22,9 +33,7 @@ public class ObjectMessageHandler {
     public Message read() {
         Message ret = null;
         try {
-            InputStream is = socket.getInputStream();
-            ObjectInputStream ois = new ObjectInputStream(is);
-            ret = (Message) ois.readObject();
+            ret = (Message) inputStream.readObject();
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -33,11 +42,10 @@ public class ObjectMessageHandler {
 
     public void write(Message message) {
         try {
-            OutputStream os = socket.getOutputStream();
-            ObjectOutputStream ois = new ObjectOutputStream(os);
-            ois.writeObject(message);
+            outputStream.writeObject(message);
+            outputStream.flush();
         } catch (IOException e) {
-            e.printStackTrace();
+//            e.printStackTrace();
         }
     }
 

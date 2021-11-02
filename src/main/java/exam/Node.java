@@ -6,7 +6,7 @@ import tasks.messages.ObjectMessageHandler;
 
 import java.io.IOException;
 import java.net.*;
-import java.util.HashMap;
+import java.util.*;
 
 /**
  * A Node represents a working element of the decryption task.
@@ -22,7 +22,7 @@ public class Node implements Runnable {
     private State state;
 
     private boolean allowNewConnections = true;
-    public final HashMap<InetAddress, Integer> connectedTo = new HashMap<>();
+    public final HashMap<String, SocketClient.ClientCommunicator> connectedTo = new HashMap<>();
 
     // Create Threads for both the server and client socket
     private final SocketServer socketServer = new SocketServer();
@@ -43,10 +43,10 @@ public class Node implements Runnable {
         /**
          * This class will read the incoming messages and send responses.
          */
-        private class IncomingReader implements Runnable {
+        private class ServerCommunicator implements Runnable {
             private final Socket connection;
 
-            public IncomingReader(Socket connection) {
+            public ServerCommunicator(Socket connection) {
                 this.connection = connection;
             }
 
@@ -72,7 +72,7 @@ public class Node implements Runnable {
                         logConsole("Port received: " + port);
 
                         // Check whether the nodes are already connected
-                        if (connectedTo.containsValue(port)) {
+                        if (connectedTo.containsKey(connection.getInetAddress() + ":" + port)) {
                             logConsole("Already connected to that node!");
                             connection.close();
                         } else {
@@ -80,6 +80,22 @@ public class Node implements Runnable {
 
                             // Connect to the new node
                             socketClient.connectTo(connection.getInetAddress(), (Integer) incomingMessage.getPayload());
+
+                            // TODO: Send new note information to everyone
+                            for (Map.Entry<String, SocketClient.ClientCommunicator> entry : connectedTo.entrySet()) {
+                                SocketClient.ClientCommunicator communicator = entry.getValue();
+
+                                // Create the message object
+                                Message newConnection = new Message();
+                                newConnection.setSender(name);
+                                newConnection.setReceiver(communicator.connection.getName());
+                                newConnection.setType("connection");
+                                newConnection.setPayload(entry.getKey());
+
+                                // Send it
+                                communicator.sendMessage(newConnection);
+                            }
+
                         }
                     } else if ("rsa".equalsIgnoreCase(incomingMessage.getType())) {
                         logConsole("The new connection is the client!");
@@ -110,6 +126,15 @@ public class Node implements Runnable {
                 while (!connection.isClosed()) {
                     incomingMessage = messageHandler.read();
                     logConsole("Incoming: " + incomingMessage);
+
+                    if ("connection".equalsIgnoreCase(incomingMessage.getType())) {
+                        String[] payload = ((String) incomingMessage.getPayload()).split(":");
+                        try {
+                            connectTo(payload[0], Integer.parseInt(payload[1]));
+                        } catch (UnknownHostException e) {
+                            e.printStackTrace();
+                        }
+                    }
                 }
             }
         }
@@ -129,7 +154,7 @@ public class Node implements Runnable {
                     Socket connection = serverSocket.accept();
 
                     // Create a new thread to parse incoming messages
-                    IncomingReader reader = new IncomingReader(connection);
+                    ServerCommunicator reader = new ServerCommunicator(connection);
                     Thread readerThread = new Thread(reader);
                     readerThread.start();
                 }
@@ -147,16 +172,19 @@ public class Node implements Runnable {
         /**
          * This class will read incoming messages
          */
-        private class OutgoingReader implements Runnable {
-            private final Socket connection;
+        private class ClientCommunicator implements Runnable {
+            private final Connection connection;
+            private ObjectMessageHandler messageHandler;
+            private List<Message> sendBuffer = new ArrayList<>();
 
-            public OutgoingReader(Socket connection) {
+            public ClientCommunicator(Connection connection) {
                 this.connection = connection;
             }
 
             @Override
             public void run() {
-                ObjectMessageHandler messageHandler = new ObjectMessageHandler(connection);
+                Socket socket = connection.getSocket();
+                messageHandler = new ObjectMessageHandler(socket);
 
                 // Read the incoming message
                 // Should be a port request
@@ -175,18 +203,34 @@ public class Node implements Runnable {
                         reply.setPayload(port);
 
                         messageHandler.write(reply);
+
+                        // Also update the name of the Connection object
+                        connection.setName(incomingMessage.getSender());
                     } else {
                         logConsole("Server responded with an invalid message");
-                        connection.close();
+                        socket.close();
                     }
                 } catch (IOException e) {
                     e.printStackTrace();
                 }
 
                 // Read incoming messages
-//                while (!connection.isClosed()) {
-//                    incomingMessage = messageHandler.read();
-//                }
+                while (!socket.isClosed()) {
+                    try {
+                        for (Message sendMe : sendBuffer) {
+                            messageHandler.write(sendMe);
+                            sendBuffer.remove(sendMe);
+                        }
+                    } catch (ConcurrentModificationException e) {
+//                        e.printStackTrace();
+                    }
+
+                }
+            }
+
+            public void sendMessage(Message message) {
+                logConsole("Writing message:\n" + message);
+                sendBuffer.add(message);
             }
         }
 
@@ -194,6 +238,12 @@ public class Node implements Runnable {
         public void run() {
         }
 
+        /**
+         * This method creates a new socket and connects to the given address and port.
+         *
+         * @param address The address of the socket server to connect to
+         * @param port The port of the socket server to connect to
+         */
         public void connectTo(InetAddress address, int port) {
             try {
                 // Try connecting to the given socket
@@ -202,10 +252,15 @@ public class Node implements Runnable {
                 logConsole("Connected to: " + clientSocket);
 
                 // Save that connection
-                connectedTo.put(address, port);
+                Connection connectionInformation = new Connection(address, port, "", clientSocket);
+                ClientCommunicator communicator = new ClientCommunicator(connectionInformation);
+                connectedTo.put(
+                        createConnectionKey(address, port),
+                        communicator
+                );
 
                 // Create a new thread for the client socket
-                Thread readerThread = new Thread(new OutgoingReader(clientSocket));
+                Thread readerThread = new Thread(communicator);
                 readerThread.start();
             } catch (IOException e) {
                 e.printStackTrace();
@@ -240,5 +295,9 @@ public class Node implements Runnable {
 
     public void connectTo(String name, int port) throws UnknownHostException {
         socketClient.connectTo(InetAddress.getByName(name), port);
+    }
+
+    public String createConnectionKey(InetAddress address, int port) {
+        return address + ":" + port;
     }
 }
