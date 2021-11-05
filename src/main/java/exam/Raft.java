@@ -4,18 +4,20 @@ import tasks.messages.Message;
 import tasks.messages.ObjectMessageHandler;
 
 import java.io.IOException;
-import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.*;
+import java.util.Date;
+import java.util.Map;
+import java.util.Timer;
+import java.util.TimerTask;
 
 class Raft implements Runnable {
-    Node raftNode;
+    public Node_OLD raftNodeOLD;
     final Timer electionTimeout = new Timer();
     private final TimerTask timeoutTask = new TimerTask() {
         @Override
         public void run() {
 
-            while (raftNode.connectedTo.isEmpty()) {
+            while (raftNodeOLD.connectedTo.isEmpty()) {
                 try {
                     Thread.sleep(500);
                 } catch (InterruptedException e) {
@@ -36,8 +38,8 @@ class Raft implements Runnable {
         }
     };
 
-    public Raft(Node node) {
-        this.raftNode = node;
+    public Raft(Node_OLD nodeOLD) {
+        this.raftNodeOLD = nodeOLD;
     }
 
     @Override
@@ -53,35 +55,35 @@ class Raft implements Runnable {
 
 
     private boolean checkLeader() {
-        System.out.println(raftNode.connectedTo.keySet());
+        System.out.println(raftNodeOLD.connectedTo.keySet());
         return false;
     }
 
     private void startElection() throws IOException {
         System.out.println("Election started!");
-        for (Map.Entry<String, Node.SocketClient.ClientCommunicator> entry : raftNode.connectedTo.entrySet()) {
-            Node.SocketClient.ClientCommunicator communicator = entry.getValue();
+        for (Map.Entry<String, Node_OLD.SocketClient.ClientCommunicator> entry : raftNodeOLD.connectedTo.entrySet()) {
+            Node_OLD.SocketClient.ClientCommunicator communicator = entry.getValue();
 
             // Create the message object
             Message newConnection = new Message();
-            newConnection.setSender(raftNode.name);
+            newConnection.setSender(raftNodeOLD.name);
             newConnection.setType("connection");
-            newConnection.setPayload(raftNode.name);
+            newConnection.setPayload(raftNodeOLD.name);
             newConnection.setType("election");
             // Send it
             communicator.sendMessage(newConnection);
         }
 
-        String[] connect = raftNode.connectedTo.keySet().toString().split(":");
+        String[] connect = raftNodeOLD.connectedTo.keySet().toString().split(":");
         System.out.println();
         int port = Integer.parseInt(connect[1].substring(0,4));
         Socket followers = new Socket("localhost", port );
         ObjectMessageHandler messageHandler = new ObjectMessageHandler(followers);
         Message election = new Message();
-        election.setReceiver(raftNode.connectedTo.keySet().toString());
-        election.setSender(raftNode.name);
+        election.setReceiver(raftNodeOLD.connectedTo.keySet().toString());
+        election.setSender(raftNodeOLD.name);
         election.setType("election");
-        election.setPayload(raftNode.name);
+        election.setPayload(raftNodeOLD.name);
         messageHandler.write(election);
     }
 

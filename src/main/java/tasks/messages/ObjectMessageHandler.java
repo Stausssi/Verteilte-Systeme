@@ -9,12 +9,10 @@ import java.net.SocketException;
  * from/to a socket
  */
 public class ObjectMessageHandler {
-    private final Socket socket;
     private ObjectInputStream inputStream;
     private ObjectOutputStream outputStream;
 
     public ObjectMessageHandler(Socket socket) {
-        this.socket = socket;
         try {
             outputStream = new ObjectOutputStream(socket.getOutputStream());
             outputStream.flush();
@@ -45,8 +43,12 @@ public class ObjectMessageHandler {
             outputStream.writeObject(message);
             outputStream.flush();
         } catch (IOException e) {
-//            e.printStackTrace();
+            e.printStackTrace();
         }
+    }
+
+    public boolean isMessageAvailable() throws IOException {
+        return inputStream.available() > 0;
     }
 
 }

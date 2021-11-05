@@ -4,9 +4,9 @@ import java.net.UnknownHostException;
 
 public class TestApplication {
     public static void main(String[] args) throws InterruptedException, UnknownHostException {
-        Node node1 = new Node(4444, "Node1");
-        Node node2 = new Node(4445, "Node2");
-        Node node3 = new Node(2342, "Node3");
+        Node_OLD node1 = new Node_OLD(4444, "Node1");
+        Node_OLD node2 = new Node_OLD(4445, "Node2");
+        Node_OLD node3 = new Node_OLD(2342, "Node3");
 
         Thread thread1 = new Thread(node1);
         Thread thread2 = new Thread(node2);

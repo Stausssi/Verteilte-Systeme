@@ -1,5 +1,7 @@
 package tasks.messages;
 
+import exam.MessageType;
+
 import java.io.Serializable;
 import java.time.Instant;
 
@@ -14,6 +16,7 @@ public class Message implements Serializable {
     private Object payload;
     private Instant time = Instant.now();
     private String type; // may be an enum
+    private MessageType messageType;
     private int sequenceNo = -1;
 
     /**
@@ -59,8 +62,16 @@ public class Message implements Serializable {
         return type;
     }
 
+    public MessageType getMessageType() {
+        return messageType;
+    }
+
     public void setType(String type) {
         this.type = type;
+    }
+
+    public void setMessageType(MessageType messageType) {
+        this.messageType = messageType;
     }
 
     public int getSequenceNo() {
