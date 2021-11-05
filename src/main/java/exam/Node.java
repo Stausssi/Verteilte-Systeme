@@ -7,6 +7,7 @@ import tasks.messages.ObjectMessageHandler;
 import java.io.IOException;
 import java.net.*;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * A Node represents a working element of the decryption task.
@@ -18,14 +19,14 @@ public class Node implements Runnable {
     private static int maxIncomingClients = 100;
 
     private final int port;
-    private final String name;
+    protected final String name;
     private State state;
 
     private boolean allowNewConnections = true;
-    public final HashMap<String, SocketClient.ClientCommunicator> connectedTo = new HashMap<>();
+    public final ConcurrentHashMap<String, SocketClient.ClientCommunicator> connectedTo = new ConcurrentHashMap<>();
 
     // Create Threads for both the server and client socket
-    private final SocketServer socketServer = new SocketServer();
+    protected final SocketServer socketServer = new SocketServer();
     private final SocketClient socketClient = new SocketClient();
     private final Raft leaderElection = new Raft(this);
 
@@ -38,7 +39,7 @@ public class Node implements Runnable {
     /**
      * This class will handle the incoming connections and receive messages.
      */
-    private class SocketServer implements Runnable {
+    protected class SocketServer implements Runnable {
 
         /**
          * This class will read the incoming messages and send responses.
@@ -167,12 +168,12 @@ public class Node implements Runnable {
     /**
      * This class will send messages to other nodes.
      */
-    private class SocketClient implements Runnable {
+    class SocketClient implements Runnable {
 
         /**
          * This class will read incoming messages
          */
-        private class ClientCommunicator implements Runnable {
+        class ClientCommunicator implements Runnable {
             private final Connection connection;
             private ObjectMessageHandler messageHandler;
             private List<Message> sendBuffer = new ArrayList<>();
