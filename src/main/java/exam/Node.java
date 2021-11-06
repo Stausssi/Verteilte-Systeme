@@ -26,7 +26,7 @@ public class Node implements Runnable {
     private final InetAddress address;
     private final int port;
     protected final String name;
-    private State state;
+    protected State state;
 
     public volatile ConcurrentHashMap<String, Connection> connections = new ConcurrentHashMap<>();
     public volatile ConcurrentHashMap<Connection, Message> outgoingMessages = new ConcurrentHashMap<>();

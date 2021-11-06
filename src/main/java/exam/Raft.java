@@ -58,26 +58,15 @@ class Raft implements Runnable {
 
     private void startElection() throws IOException {
 //        System.out.println("Election started!");
+        raftNode.state = State.CANDIDATE;
 
         // Create the message object
         Message election = new Message();
-        election.setPayload(raftNode.name);
+        election.setSender(raftNode.name);
         election.setMessageType(MessageType.RAFT_ELECTION);
 
         // Send a broadcast message
         raftNode.broadcastMessages.add(election);
-
-//        String[] connect = raftNode.connections.keySet().toString().split(":");
-//        System.out.println();
-//        int port = Integer.parseInt(connect[1].substring(0,4));
-//        Socket followers = new Socket("localhost", port );
-//        ObjectMessageHandler messageHandler = new ObjectMessageHandler(followers);
-//        Message election = new Message();
-//        election.setReceiver(raftNode.connections.keySet().toString());
-//        election.setSender(raftNode.name);
-//        election.setType("election");
-//        election.setPayload(raftNode.name);
-//        messageHandler.write(election);
     }
 
     private void voteLeader() {
