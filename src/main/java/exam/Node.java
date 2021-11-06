@@ -211,10 +211,10 @@ public class Node implements Runnable {
                     logConsole("PublicKey received: " + incomingMessage.getPayload());
                     break;
                 case RAFT_ELECTION:
-                    logConsole("Raft Election started by " + incomingMessage.getPayload());
+                    logConsole("Raft Election started by " + incomingMessage.getSender());
                     break;
                 default:
-                    logConsole("Message fits no type" + incomingMessage);
+                    logConsole("Message fits no type " + incomingMessage);
                     break;
             }
         }
