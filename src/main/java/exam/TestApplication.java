@@ -7,7 +7,7 @@ public class TestApplication {
         Node node1 = new Node(4444, "Node1");
         Node node2 = new Node(4445, "Node2");
         Node node3 = new Node(2342, "Node3");
-        Node node4 = new Node(3333, "Node3");
+        Node node4 = new Node(3333, "Node4");
 
         Thread thread1 = new Thread(node1);
         Thread thread2 = new Thread(node2);

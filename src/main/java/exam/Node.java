@@ -78,7 +78,6 @@ public class Node implements Runnable {
                     ObjectMessageHandler tempHandler = new ObjectMessageHandler(newConnection);
 
                     // Read the "hello" message
-                    // TODO: Exception handling
                     Message hello = tempHandler.read();
                     if (hello.getMessageType() == MessageType.HELLO) {
 //                        logConsole("Hello message received: " + hello);
@@ -86,31 +85,35 @@ public class Node implements Runnable {
                         String connectionName = hello.getSender();
                         int port = (Integer) hello.getPayload();
 
-                        // Send the node a serialized version of IP:Port combinations in the connections object
-                        Message welcome = new Message();
-                        welcome.setSender(name);
-                        welcome.setReceiver(connectionName);
-                        welcome.setMessageType(MessageType.WELCOME);
+                        if (connectionName != null && port > 0) {
+                            // Send the node a serialized version of IP:Port combinations in the connections object
+                            Message welcome = new Message();
+                            welcome.setSender(name);
+                            welcome.setReceiver(connectionName);
+                            welcome.setMessageType(MessageType.WELCOME);
 
-                        StringBuilder connectionsBuilder = new StringBuilder();
-                        for (String key : Collections.list(connections.keys())) {
-                            connectionsBuilder.append(key);
-                            connectionsBuilder.append(",");
+                            // Add each connection key IP:Port to a string, separated by ,
+                            StringBuilder connectionsBuilder = new StringBuilder();
+                            for (String key : Collections.list(connections.keys())) {
+                                connectionsBuilder.append(key);
+                                connectionsBuilder.append(",");
+                            }
+
+                            // Remove the trailing comma
+                            if (connectionsBuilder.length() > 0) {
+                                connectionsBuilder.deleteCharAt(connectionsBuilder.lastIndexOf(","));
+                            }
+
+//                            logConsole("Cluster Keys: " + connectionsBuilder);
+                            welcome.setPayload(connectionsBuilder.toString());
+                            tempHandler.write(welcome);
+
+                            // Add newConnection to the HashMap
+                            connections.put(
+                                    createConnectionKey(newConnection.getInetAddress(), port),
+                                    new Connection(newConnection.getInetAddress(), port, connectionName, newConnection)
+                            );
                         }
-
-                        if (connectionsBuilder.length() > 0) {
-                            connectionsBuilder.deleteCharAt(connectionsBuilder.lastIndexOf(","));
-                        }
-
-//                        logConsole("Cluster Keys: " + connectionsBuilder);
-                        welcome.setPayload(connectionsBuilder.toString());
-                        tempHandler.write(welcome);
-
-                        // Add newConnection to the HashMap
-                        connections.put(
-                                createConnectionKey(newConnection.getInetAddress(), port),
-                                new Connection(newConnection.getInetAddress(), port, connectionName, newConnection)
-                        );
                     } else {
                         logConsole("Wrong " + hello);
                         newConnection.close();
@@ -179,16 +182,13 @@ public class Node implements Runnable {
                     String publicKey = (String) incomingMessage.getPayload();
 
                     logConsole("Public Key: " + publicKey);
-//                // TODO: Either forward message to the coordinator or delegate tasks to every worker
-//                // For now, just answer with the primes
-//                Message primes = new Message();
-//                primes.setType("primes");
-//                primes.setPayload("17594063653378370033, 15251864654563933379");
-//
-//                messageHandler.write(primes);
-//
-//                logConsole("Primes sent!");
-//                connection.close();
+                    // TODO: Either forward message to the coordinator or delegate tasks to every worker
+                    // For now, just answer with the primes
+                    Message primes = new Message();
+                    primes.setType("primes");
+                    primes.setPayload("17594063653378370033, 15251864654563933379");
+
+                    outgoingMessages.put(connection, primes);
                     break;
                 default:
                     logConsole("Message fits no type" + incomingMessage);
@@ -234,13 +234,14 @@ public class Node implements Runnable {
                             new Connection(address, port, connectionName, clientSocket)
                     );
 
+                    // Go through every given combination of IP:Port by splitting at the comma
                     for (String connectionInformation : ((String) welcome.getPayload()).split(",")) {
                         if (connectionInformation.length() > 0 && !connections.containsKey(connectionInformation)) {
 //                            logConsole("new connection information: " + connectionInformation);
                             String[] connection = connectionInformation.split(":");
                             String[] ipParts = connection[0].split("\\.");
 
-                            // Connect to the connection
+                            // Connect to the new node
                             connectTo(
                                     // Create the InetAddress object
                                     InetAddress.getByAddress(
@@ -296,16 +297,6 @@ public class Node implements Runnable {
      */
     public String createConnectionKey(InetAddress address, int port) {
         return removeHostFromAddress(address) + ":" + port;
-    }
-
-    /**
-     * This method creates a connection key for a connection whose port is unknown
-     *
-     * @param address The address of the connection
-     * @return "address:NaN"
-     */
-    public String createConnectionKey(InetAddress address) {
-        return removeHostFromAddress(address) + ":Nan";
     }
 
     /**
