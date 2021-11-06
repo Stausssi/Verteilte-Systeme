@@ -8,9 +8,7 @@ import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.UnknownHostException;
-import java.util.ArrayList;
 import java.util.Collections;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -50,16 +48,16 @@ public class Node implements Runnable {
         // Create the threads for server, communicator and Raft protocol
         Thread serverThread = new Thread(socketServer);
         Thread communicatorThread = new Thread(new CommunicationHandler());
-//        Thread raftThread = new Thread(raft);
+        Thread raftThread = new Thread(raft);
 
         serverThread.start();
         communicatorThread.start();
-//        raftThread.start();
+        raftThread.start();
 
         try {
             serverThread.join();
             communicatorThread.join();
-//            raftThread.join();
+            raftThread.join();
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
@@ -186,23 +184,34 @@ public class Node implements Runnable {
                 for (Message broadcast : broadcastMessages) {
                     for (Connection c : connections.values()) {
                         c.getMessageHandler().write(broadcast);
+
+//                        logConsole("Sent broadcast " + b + " to " + c.getName() + " (" + c.getSocket() + ")");
                     }
 
                     // Remove the head. Should always be the element which was sent
                     broadcastMessages.remove();
                 }
+//
+//                try {
+//                    Thread.sleep(200);
+//                } catch (InterruptedException e) {
+//                    e.printStackTrace();
+//                }
             }
         }
 
         private void parseMessage(Message incomingMessage, Connection connection) {
-            logConsole("Incoming " + incomingMessage + "\nFrom Connection: " + connection.getName());
+//            logConsole("Incoming " + incomingMessage + "\nFrom Connection: " + connection.getName());
 
             switch (incomingMessage.getMessageType()) {
                 case REQUEST:
                     logConsole("This is a request");
                     break;
                 case RSA:
-                    logConsole("PublicKey received: " + incomingMessage);
+                    logConsole("PublicKey received: " + incomingMessage.getPayload());
+                    break;
+                case RAFT_ELECTION:
+                    logConsole("Raft Election started by " + incomingMessage.getPayload());
                     break;
                 default:
                     logConsole("Message fits no type" + incomingMessage);

@@ -22,16 +22,16 @@ class Raft implements Runnable {
                 }
             }
             if (!checkLeader()) {
-                System.out.println("test2");
+//                System.out.println("test2");
                 try {
                     startElection();
                 } catch (IOException e) {
                     e.printStackTrace();
                 }
             }
-            else{
-                System.out.println("else2");
-            }
+//            else{
+//                System.out.println("else2");
+//            }
         }
     };
 
@@ -52,17 +52,17 @@ class Raft implements Runnable {
 
 
     private boolean checkLeader() {
-        System.out.println(raftNode.connections.keySet());
+//        System.out.println(raftNode.connections.keySet());
         return false;
     }
 
     private void startElection() throws IOException {
-        System.out.println("Election started!");
+//        System.out.println("Election started!");
 
         // Create the message object
         Message election = new Message();
         election.setPayload(raftNode.name);
-        election.setType("election");
+        election.setMessageType(MessageType.RAFT_ELECTION);
 
         // Send a broadcast message
         raftNode.broadcastMessages.add(election);

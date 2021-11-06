@@ -10,17 +10,10 @@ import java.net.Socket;
  * from/to a socket
  */
 public class ObjectMessageHandler {
-    private ObjectInputStream inputStream;
-    private ObjectOutputStream outputStream;
+    private final Socket socket;
 
     public ObjectMessageHandler(Socket socket) {
-        try {
-            outputStream = new ObjectOutputStream(socket.getOutputStream());
-            outputStream.flush();
-            inputStream = new ObjectInputStream(socket.getInputStream());
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+        this.socket = socket;
     }
 
     /**
@@ -32,6 +25,7 @@ public class ObjectMessageHandler {
     public Message read() {
         Message ret = null;
         try {
+            ObjectInputStream inputStream = new ObjectInputStream(socket.getInputStream());
             ret = (Message) inputStream.readObject();
         } catch (Exception e) {
             e.printStackTrace();
@@ -41,15 +35,16 @@ public class ObjectMessageHandler {
 
     public void write(Message message) {
         try {
+            ObjectOutputStream outputStream = new ObjectOutputStream(socket.getOutputStream());
             outputStream.writeObject(message);
-            outputStream.flush();
+//            outputStream.flush();
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
     public boolean isMessageAvailable() throws IOException {
-        return inputStream.available() != 0;
+        return socket.getInputStream().available() != 0;
     }
 
 }

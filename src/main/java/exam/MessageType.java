@@ -8,6 +8,8 @@ public enum MessageType {
     // A Message of the type WELCOME contains a list of IP:Port combinations and is sent to a new client
     WELCOME("welcome"),
 
+    RAFT_ELECTION("election"),
+
     // A Message of the type REQUEST contains a request. The type of the request is specified in the payload.
     REQUEST("request"),
 
