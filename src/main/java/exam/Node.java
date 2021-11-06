@@ -1,6 +1,5 @@
 package exam;
 
-import com.sun.org.apache.xml.internal.security.algorithms.MessageDigestAlgorithm;
 import tasks.messages.ObjectMessageHandler;
 import tasks.messages.Message;
 
@@ -8,10 +7,8 @@ import java.io.IOException;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.net.UnknownHostException;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -22,8 +19,9 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class Node implements Runnable {
     private static final int MAX_INCOMING_CLIENTS = 100;
-    private final boolean allowNewConnections = true;
+    private boolean allowNewConnections = true;
 
+    private final InetAddress address;
     private final int port;
     protected final String name;
     private State state;
@@ -34,7 +32,8 @@ public class Node implements Runnable {
     protected final SocketServer socketServer = new SocketServer();
 //    private final Raft leaderElection = new Raft(this);
 
-    public Node(int port, String name) {
+    public Node(int port, String name) throws UnknownHostException {
+        this.address = InetAddress.getByName("localhost");
         this.port = port;
         this.name = name;
         this.state = State.FOLLOWER;
@@ -43,10 +42,8 @@ public class Node implements Runnable {
     @Override
     public void run() {
         Thread serverThread = new Thread(socketServer);
-//        Thread clientThread = new Thread(socketClient);
         Thread communicator = new Thread(new CommunicationHandler());
 
-        // TODO: Eventuell Kommunikation hier handeln
         serverThread.start();
         communicator.start();
 
@@ -71,7 +68,7 @@ public class Node implements Runnable {
                 ServerSocket serverSocket = new ServerSocket(
                         port,
                         MAX_INCOMING_CLIENTS,
-                        InetAddress.getByName("localhost")
+                        address
                 );
 
                 logConsole("Started server socket on: " + serverSocket);
@@ -80,28 +77,44 @@ public class Node implements Runnable {
                     Socket newConnection = serverSocket.accept();
                     ObjectMessageHandler tempHandler = new ObjectMessageHandler(newConnection);
 
-                    // Send the node a serialized version of IP:Port combinations in the connections object
-                    Message serConnections = new Message();
-                    serConnections.setSender(name);
-                    serConnections.setMessageType(MessageType.CLUSTER);
-                    serConnections.setType("cluster");
-                    logConsole("Cluster Keys: " + connections.keys());
-//                    serConnections.setPayload(connections.keys());
-//                    tempHandler.write(serConnections);
+                    // Read the "hello" message
+                    // TODO: Exception handling
+                    Message hello = tempHandler.read();
+                    if (hello.getMessageType() == MessageType.HELLO) {
+//                        logConsole("Hello message received: " + hello);
 
-                    // Also send a port request
-                    Message request = new Message();
-                    request.setSender(name);
-//                    request.setType("request");
-                    request.setMessageType(MessageType.REQUEST);
-                    request.setPayload("port");
-                    tempHandler.write(request);
+                        String connectionName = hello.getSender();
+                        int port = (Integer) hello.getPayload();
 
-                    // Add newConnection to the HashMap
-                    connections.put(
-                            createConnectionKey(newConnection.getInetAddress()),
-                            new Connection(newConnection.getInetAddress(), -1, "", newConnection)
-                    );
+                        // Send the node a serialized version of IP:Port combinations in the connections object
+                        Message welcome = new Message();
+                        welcome.setSender(name);
+                        welcome.setReceiver(connectionName);
+                        welcome.setMessageType(MessageType.WELCOME);
+
+                        StringBuilder connectionsBuilder = new StringBuilder();
+                        for (String key : Collections.list(connections.keys())) {
+                            connectionsBuilder.append(key);
+                            connectionsBuilder.append(",");
+                        }
+
+                        if (connectionsBuilder.length() > 0) {
+                            connectionsBuilder.deleteCharAt(connectionsBuilder.lastIndexOf(","));
+                        }
+
+//                        logConsole("Cluster Keys: " + connectionsBuilder);
+                        welcome.setPayload(connectionsBuilder.toString());
+                        tempHandler.write(welcome);
+
+                        // Add newConnection to the HashMap
+                        connections.put(
+                                createConnectionKey(newConnection.getInetAddress(), port),
+                                new Connection(newConnection.getInetAddress(), port, connectionName, newConnection)
+                        );
+                    } else {
+                        logConsole("Wrong " + hello);
+                        newConnection.close();
+                    }
                 }
             } catch (IOException e) {
                 e.printStackTrace();
@@ -159,50 +172,6 @@ public class Node implements Runnable {
             switch (incomingMessage.getMessageType()) {
                 case REQUEST:
                     logConsole("This is a request");
-
-                    switch ((RequestTypes) incomingMessage.getPayload()) {
-                        case PORT:
-                            Message reply = new Message();
-                            reply.setSender(name);
-                            reply.setReceiver(incomingMessage.getSender());
-                            reply.setMessageType(MessageType.PORT);
-                            reply.setPayload(port);
-
-                            // Save the message to the outgoing hashmap
-                            outgoingMessages.put(
-                                    connection,
-                                    reply
-                            );
-                            break;
-                        default:
-                            logConsole("Unknown request type");
-                    }
-                    break;
-                case CLUSTER:
-                    logConsole("Cluster information received");
-
-                    // TODO: Connect to each given IP:Port combination
-                    break;
-                case PORT:
-                    int port = (Integer) incomingMessage.getPayload();
-                    logConsole("Port received: " + port);
-
-                    // Check whether the there is a connection entry with a missing port
-                    if (connections.containsKey(connection.getSocket().getInetAddress() + ":NaN")) {
-                        logConsole("This is a port message to a new connection!");
-
-                        Connection c = connections.get(connection.getSocket().getInetAddress() + ":NaN");
-
-                        // Update the name of the connection
-                        c.setName(incomingMessage.getSender());
-
-                        // Remove the existing entry and add a new one with the correct key
-                        connections.remove(connection.getSocket().getInetAddress() + ":NaN");
-                        connections.put(connection.getSocket().getInetAddress() + ":" + port, c);
-
-                        // Connect to the new node
-//                    socketClient.connectTo(connection.getInetAddress(), (Integer) incomingMessage.getPayload());
-                    }
                     break;
                 case RSA:
                     logConsole("Received RSA information from the client!");
@@ -222,7 +191,8 @@ public class Node implements Runnable {
 //                connection.close();
                     break;
                 default:
-                    logConsole("Message fits no type");
+                    logConsole("Message fits no type" + incomingMessage);
+                    break;
             }
         }
     }
@@ -231,24 +201,86 @@ public class Node implements Runnable {
      * This method creates a new socket and connects to the given address and port.
      *
      * @param address The address of the socket server to connect to
-     * @param port The port of the socket server to connect to
+     * @param port    The port of the socket server to connect to
      */
     public void connectTo(InetAddress address, int port) {
+        // Only connect if either the given address or the port differs from the own
+        if (port != this.port || !removeHostFromAddress(address).equals(removeHostFromAddress(this.address))) {
+            try {
+                // Try connecting to the given socket
+                Socket clientSocket = new Socket(address, port);
+                ObjectMessageHandler tempHandler = new ObjectMessageHandler(clientSocket);
+
+//                logConsole("Connected to: " + clientSocket);
+
+                // Send a hello message
+                Message hello = new Message();
+                hello.setMessageType(MessageType.HELLO);
+                hello.setSender(name);
+                hello.setPayload(this.port);
+
+                tempHandler.write(hello);
+//                logConsole("Hello message sent: " + hello);
+
+                // Read the welcome message
+                Message welcome = tempHandler.read();
+                if (welcome.getMessageType() == MessageType.WELCOME) {
+//                    logConsole("Welcome message received: " + welcome);
+                    String connectionName = welcome.getSender();
+
+                    // Save the connection
+                    connections.put(
+                            createConnectionKey(address, port),
+                            new Connection(address, port, connectionName, clientSocket)
+                    );
+
+                    for (String connectionInformation : ((String) welcome.getPayload()).split(",")) {
+                        if (connectionInformation.length() > 0 && !connections.containsKey(connectionInformation)) {
+//                            logConsole("new connection information: " + connectionInformation);
+                            String[] connection = connectionInformation.split(":");
+                            String[] ipParts = connection[0].split("\\.");
+
+                            // Connect to the connection
+                            connectTo(
+                                    // Create the InetAddress object
+                                    InetAddress.getByAddress(
+                                            new byte[]{
+                                                    (byte) Integer.parseInt(ipParts[0]),
+                                                    (byte) Integer.parseInt(ipParts[1]),
+                                                    (byte) Integer.parseInt(ipParts[2]),
+                                                    (byte) Integer.parseInt(ipParts[3]),
+                                            }
+                                    ),
+                                    // Parse the port
+                                    Integer.parseInt(connection[1])
+                            );
+                        }
+                    }
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    /**
+     * This method connects to a socket with a given host name. It converts the host name and calls connectTo with an
+     * InetAddress.
+     *
+     * @param host The hostname to convert to an address.
+     * @param port The port of the socket connection.
+     */
+    public void connectTo(String host, int port) {
         try {
-            // Try connecting to the given socket
-            Socket clientSocket = new Socket(address, port);
-
-            logConsole("Connected to: " + clientSocket);
-
-            // Save that connection
-            Connection connectionInformation = new Connection(address, port, "", clientSocket);
-        } catch (IOException e) {
+            connectTo(InetAddress.getByName(host), port);
+        } catch (UnknownHostException e) {
             e.printStackTrace();
         }
     }
 
     /**
      * This method logs a given message to the console and prepends the node name in front of the message
+     *
      * @param log The message to log to sysout
      */
     private void logConsole(String log) {
@@ -257,20 +289,36 @@ public class Node implements Runnable {
 
     /**
      * This method creates a connection key consisting of IP and port
+     *
      * @param address The address of the connection
-     * @param port The port of the connection
+     * @param port    The port of the connection
      * @return "address:port"
      */
     public String createConnectionKey(InetAddress address, int port) {
-        return address + ":" + port;
+        return removeHostFromAddress(address) + ":" + port;
     }
 
     /**
      * This method creates a connection key for a connection whose port is unknown
+     *
      * @param address The address of the connection
      * @return "address:NaN"
      */
     public String createConnectionKey(InetAddress address) {
-        return address + ":Nan";
+        return removeHostFromAddress(address) + ":Nan";
+    }
+
+    /**
+     * This small helper removes the host name from the string representation of an InetAddress.
+     *
+     * @param address The address
+     * @return A String containing the IP-Address of the InetAddress.
+     */
+    private String removeHostFromAddress(InetAddress address) {
+        return address.toString().split("/")[1];
+    }
+
+    public void logConnections() {
+        logConsole("Connected to: " + connections);
     }
 }

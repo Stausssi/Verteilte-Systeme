@@ -1,8 +1,12 @@
 package exam;
 
 public enum MessageType {
-    // A Message of the type CLUSTER contains a list of IP:Port combinations
-    CLUSTER("cluster"),
+    // A Message of the type HELLO contains the name (sender) and port of a connection. It is the message that initiates
+    // the communication between nodes
+    HELLO("hello"),
+
+    // A Message of the type WELCOME contains a list of IP:Port combinations and is sent to a new client
+    WELCOME("welcome"),
 
     // A Message of the type REQUEST contains a request. The type of the request is specified in the payload.
     REQUEST("request"),

@@ -72,6 +72,7 @@ public class Message implements Serializable {
 
     public void setMessageType(MessageType messageType) {
         this.messageType = messageType;
+        this.type = messageType.toString();
     }
 
     public int getSequenceNo() {
