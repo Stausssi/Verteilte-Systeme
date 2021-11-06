@@ -1,15 +1,19 @@
 package exam;
 
-import tasks.messages.ObjectMessageHandler;
 import tasks.messages.Message;
+import tasks.messages.ObjectMessageHandler;
 
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.UnknownHostException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 /**
  * A Node represents a working element of the decryption task.
@@ -27,10 +31,12 @@ public class Node implements Runnable {
     private State state;
 
     public volatile ConcurrentHashMap<String, Connection> connections = new ConcurrentHashMap<>();
+    public volatile ConcurrentHashMap<Connection, Message> outgoingMessages = new ConcurrentHashMap<>();
+    public volatile ConcurrentLinkedQueue<Message> broadcastMessages = new ConcurrentLinkedQueue<>();
 
     // Create threads for socket server and client
     protected final SocketServer socketServer = new SocketServer();
-//    private final Raft leaderElection = new Raft(this);
+    private final Raft raft = new Raft(this);
 
     public Node(int port, String name) throws UnknownHostException {
         this.address = InetAddress.getByName("localhost");
@@ -41,15 +47,19 @@ public class Node implements Runnable {
 
     @Override
     public void run() {
+        // Create the threads for server, communicator and Raft protocol
         Thread serverThread = new Thread(socketServer);
-        Thread communicator = new Thread(new CommunicationHandler());
+        Thread communicatorThread = new Thread(new CommunicationHandler());
+//        Thread raftThread = new Thread(raft);
 
         serverThread.start();
-        communicator.start();
+        communicatorThread.start();
+//        raftThread.start();
 
         try {
             serverThread.join();
-            communicator.join();
+            communicatorThread.join();
+//            raftThread.join();
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
@@ -60,7 +70,6 @@ public class Node implements Runnable {
      * This class will handle the incoming connections and receive messages.
      */
     protected class SocketServer implements Runnable {
-
         @Override
         public void run() {
             // Open the ServerSocket
@@ -74,16 +83,17 @@ public class Node implements Runnable {
                 logConsole("Started server socket on: " + serverSocket);
 
                 while (allowNewConnections) {
+                    // Accept a new connection
                     Socket newConnection = serverSocket.accept();
                     ObjectMessageHandler tempHandler = new ObjectMessageHandler(newConnection);
 
                     // Read the "hello" message
-                    Message hello = tempHandler.read();
-                    if (hello.getMessageType() == MessageType.HELLO) {
+                    Message firstMessage = tempHandler.read();
+                    if (firstMessage.getMessageType() == MessageType.HELLO) {
 //                        logConsole("Hello message received: " + hello);
 
-                        String connectionName = hello.getSender();
-                        int port = (Integer) hello.getPayload();
+                        String connectionName = firstMessage.getSender();
+                        int port = (Integer) firstMessage.getPayload();
 
                         if (connectionName != null && port > 0) {
                             // Send the node a serialized version of IP:Port combinations in the connections object
@@ -114,8 +124,23 @@ public class Node implements Runnable {
                                     new Connection(newConnection.getInetAddress(), port, connectionName, newConnection)
                             );
                         }
+                    } else if (firstMessage.getMessageType() == MessageType.RSA && "Client".equalsIgnoreCase(firstMessage.getSender())) {
+//                        logConsole("Received RSA information from the client!");
+//                        String publicKey = (String) firstMessage.getPayload();
+//                        logConsole("Public Key: " + publicKey);
+
+                        // Broadcast the public key
+                        broadcastMessages.add(firstMessage);
+
+                        // For now, just answer with the primes
+                        Message primes = new Message();
+                        primes.setMessageType(MessageType.PRIMES);
+                        primes.setSender(name);
+                        primes.setReceiver(firstMessage.getSender());
+                        primes.setPayload("17594063653378370033, 15251864654563933379");
+
+                        tempHandler.write(primes);
                     } else {
-                        logConsole("Wrong " + hello);
                         newConnection.close();
                     }
                 }
@@ -130,9 +155,6 @@ public class Node implements Runnable {
      * It reads incoming messages and sends the corresponding responses.
      */
     private class CommunicationHandler implements Runnable {
-        private final List<Message> broadcastMessages = new ArrayList<>();
-        private final HashMap<Connection, Message> outgoingMessages = new HashMap<>();
-
         @Override
         public void run() {
             logConsole("The CommunicationHandler was started");
@@ -153,42 +175,34 @@ public class Node implements Runnable {
                         e.printStackTrace();
                     }
 
-                    // Send the node each broadcast message
-                    for (Message broadcast : broadcastMessages) {
-                        messageHandler.write(broadcast);
-                    }
-
                     // Send the messages which are only directed at the connection
                     if (outgoingMessages.containsKey(c)) {
                         messageHandler.write(outgoingMessages.get(c));
                         outgoingMessages.remove(c);
                     }
                 }
+
+                // Go through every broadcast message
+                for (Message broadcast : broadcastMessages) {
+                    for (Connection c : connections.values()) {
+                        c.getMessageHandler().write(broadcast);
+                    }
+
+                    // Remove the head. Should always be the element which was sent
+                    broadcastMessages.remove();
+                }
             }
         }
 
         private void parseMessage(Message incomingMessage, Connection connection) {
             logConsole("Incoming " + incomingMessage + "\nFrom Connection: " + connection.getName());
-            // Update the name of the connection
-            connection.setName(incomingMessage.getSender());
 
             switch (incomingMessage.getMessageType()) {
                 case REQUEST:
                     logConsole("This is a request");
                     break;
                 case RSA:
-                    logConsole("Received RSA information from the client!");
-
-                    String publicKey = (String) incomingMessage.getPayload();
-
-                    logConsole("Public Key: " + publicKey);
-                    // TODO: Either forward message to the coordinator or delegate tasks to every worker
-                    // For now, just answer with the primes
-                    Message primes = new Message();
-                    primes.setType("primes");
-                    primes.setPayload("17594063653378370033, 15251864654563933379");
-
-                    outgoingMessages.put(connection, primes);
+                    logConsole("PublicKey received: " + incomingMessage);
                     break;
                 default:
                     logConsole("Message fits no type" + incomingMessage);

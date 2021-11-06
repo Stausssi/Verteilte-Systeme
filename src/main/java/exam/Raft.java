@@ -1,23 +1,20 @@
 package exam;
 
 import tasks.messages.Message;
-import tasks.messages.ObjectMessageHandler;
 
 import java.io.IOException;
-import java.net.Socket;
 import java.util.Date;
-import java.util.Map;
 import java.util.Timer;
 import java.util.TimerTask;
 
 class Raft implements Runnable {
-    public Node_OLD raftNodeOLD;
+    public Node raftNode;
     final Timer electionTimeout = new Timer();
     private final TimerTask timeoutTask = new TimerTask() {
         @Override
         public void run() {
 
-            while (raftNodeOLD.connectedTo.isEmpty()) {
+            while (raftNode.connections.isEmpty()) {
                 try {
                     Thread.sleep(500);
                 } catch (InterruptedException e) {
@@ -38,8 +35,8 @@ class Raft implements Runnable {
         }
     };
 
-    public Raft(Node_OLD nodeOLD) {
-        this.raftNodeOLD = nodeOLD;
+    public Raft(Node node) {
+        this.raftNode = node;
     }
 
     @Override
@@ -55,36 +52,32 @@ class Raft implements Runnable {
 
 
     private boolean checkLeader() {
-        System.out.println(raftNodeOLD.connectedTo.keySet());
+        System.out.println(raftNode.connections.keySet());
         return false;
     }
 
     private void startElection() throws IOException {
         System.out.println("Election started!");
-        for (Map.Entry<String, Node_OLD.SocketClient.ClientCommunicator> entry : raftNodeOLD.connectedTo.entrySet()) {
-            Node_OLD.SocketClient.ClientCommunicator communicator = entry.getValue();
 
-            // Create the message object
-            Message newConnection = new Message();
-            newConnection.setSender(raftNodeOLD.name);
-            newConnection.setType("connection");
-            newConnection.setPayload(raftNodeOLD.name);
-            newConnection.setType("election");
-            // Send it
-            communicator.sendMessage(newConnection);
-        }
-
-        String[] connect = raftNodeOLD.connectedTo.keySet().toString().split(":");
-        System.out.println();
-        int port = Integer.parseInt(connect[1].substring(0,4));
-        Socket followers = new Socket("localhost", port );
-        ObjectMessageHandler messageHandler = new ObjectMessageHandler(followers);
+        // Create the message object
         Message election = new Message();
-        election.setReceiver(raftNodeOLD.connectedTo.keySet().toString());
-        election.setSender(raftNodeOLD.name);
+        election.setPayload(raftNode.name);
         election.setType("election");
-        election.setPayload(raftNodeOLD.name);
-        messageHandler.write(election);
+
+        // Send a broadcast message
+        raftNode.broadcastMessages.add(election);
+
+//        String[] connect = raftNode.connections.keySet().toString().split(":");
+//        System.out.println();
+//        int port = Integer.parseInt(connect[1].substring(0,4));
+//        Socket followers = new Socket("localhost", port );
+//        ObjectMessageHandler messageHandler = new ObjectMessageHandler(followers);
+//        Message election = new Message();
+//        election.setReceiver(raftNode.connections.keySet().toString());
+//        election.setSender(raftNode.name);
+//        election.setType("election");
+//        election.setPayload(raftNode.name);
+//        messageHandler.write(election);
     }
 
     private void voteLeader() {

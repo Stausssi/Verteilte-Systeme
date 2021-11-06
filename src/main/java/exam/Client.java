@@ -21,47 +21,36 @@ public class Client {
             Socket cluster = new Socket("localhost", 4444);
             ObjectMessageHandler messageHandler = new ObjectMessageHandler(cluster);
 
-            // On connect, a port prompt will be received
-            // Since this is not a Node, simply ignore this request
-            Message incomingMessage = messageHandler.read();
+            // Send the RSA information
+            Message rsaInfo = new Message();
+            rsaInfo.setSender("Client");
+            rsaInfo.setMessageType(MessageType.RSA);
+            rsaInfo.setPayload(publicKey);
+            messageHandler.write(rsaInfo);
 
-            if (MessageHelper.isPortRequest(incomingMessage)) {
-                System.out.println("Connected to the cluster!");
+            // Now wait for the cluster to solve the key
+            while (!cluster.isClosed()) {
+                Message incomingMessage = messageHandler.read();
+                System.out.println("Received: " + incomingMessage);
 
-                // Let them know this is the client by sending RSA information
-                Message rsaInfo = new Message();
-                rsaInfo.setSender("Client");
-                rsaInfo.setType("rsa");
-                rsaInfo.setPayload(publicKey);
-                messageHandler.write(rsaInfo);
+                if (incomingMessage.getMessageType() == MessageType.PRIMES) {
+                    String[] primes = ((String) incomingMessage.getPayload()).replace(" ", "").split(",");
+                    System.out.println("Received the primes " + Arrays.toString(primes) + " from the cluster!");
 
-                // Now wait for the cluster to solve the key
-                while (!cluster.isClosed()) {
-                    incomingMessage = messageHandler.read();
-                    System.out.println("Received: " + incomingMessage);
+                    String p = primes[0];
+                    String q = primes[1];
 
-                    if ("primes".equalsIgnoreCase(incomingMessage.getType())) {
-                        String[] primes = ((String) incomingMessage.getPayload()).replace(" ", "").split(",");
-                        System.out.println("Received the primes " + Arrays.toString(primes) + " from the cluster!");
-
-                        String p = primes[0];
-                        String q = primes[1];
-
-                        // Create an RSA Helper
-                        RSAHelper helper = new RSAHelper();
-                        if (helper.isValid(p, q, publicKey)) {
-                            System.out.println("Primes are valid!");
-                            System.out.println("Decrypted text is: " + helper.decrypt(p, q, encrypted));
-                        } else {
-                            System.out.println("Primes dont fit!");
-                        }
-
-                        cluster.close();
+                    // Create an RSA Helper
+                    RSAHelper helper = new RSAHelper();
+                    if (helper.isValid(p, q, publicKey)) {
+                        System.out.println("Primes are valid!");
+                        System.out.println("Decrypted text is: " + helper.decrypt(p, q, encrypted));
+                    } else {
+                        System.out.println("Primes dont fit!");
                     }
+
+                    cluster.close();
                 }
-            } else {
-                System.out.println("Received a invalid message from the Cluster!");
-                cluster.close();
             }
         } catch (IOException e) {
             e.printStackTrace();

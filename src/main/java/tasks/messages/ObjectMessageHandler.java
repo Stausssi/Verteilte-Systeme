@@ -1,8 +1,9 @@
 package tasks.messages;
 
-import java.io.*;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.net.Socket;
-import java.net.SocketException;
 
 /**
  * This class is used as an example for reading and writing Message-Objects
@@ -48,7 +49,7 @@ public class ObjectMessageHandler {
     }
 
     public boolean isMessageAvailable() throws IOException {
-        return inputStream.available() > 0;
+        return inputStream.available() != 0;
     }
 
 }

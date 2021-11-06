@@ -1,6 +1,7 @@
 package eu.boxwork.dhbw.examhelper.rsa;
 
-import eu.boxwork.dhbw.examhelpers.rsa.*;
+import eu.boxwork.dhbw.examhelpers.rsa.RSAHelper;
+import eu.boxwork.dhbw.examhelpers.rsa.RSAStatics;
 import org.bouncycastle.crypto.AsymmetricCipherKeyPair;
 import org.bouncycastle.crypto.generators.RSAKeyPairGenerator;
 import org.bouncycastle.crypto.params.RSAKeyGenerationParameters;
@@ -10,6 +11,7 @@ import org.junit.jupiter.api.Test;
 
 import java.math.BigInteger;
 import java.security.SecureRandom;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 public class TestRSAPrivateKeyChecker {

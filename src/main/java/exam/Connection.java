@@ -16,7 +16,6 @@ public final class Connection {
         this.address = address;
         this.port = port;
         this.name = name;
-        // TODO: Save Server and Client Socket
         this.socket = socket;
         this.messageHandler = new ObjectMessageHandler(socket);
     }
