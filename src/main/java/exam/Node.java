@@ -203,7 +203,7 @@ public class Node implements Runnable {
         private void parseMessage(Message incomingMessage, Connection connection) {
 //            logConsole("Incoming " + incomingMessage + "\nFrom Connection: " + connection.getName());
 
-            switch (incomingMessage.getMessageType()) {
+             switch (incomingMessage.getMessageType()) {
                 case REQUEST:
                     logConsole("This is a request");
                     break;
@@ -212,6 +212,9 @@ public class Node implements Runnable {
                     break;
                 case RAFT_ELECTION:
                     logConsole("Raft Election started by " + incomingMessage.getSender());
+                    break;
+                case RAFT_HEARTBEAT:
+                    logConsole("Heartbeat received by " + incomingMessage.getSender());
                     break;
                 default:
                     logConsole("Message fits no type " + incomingMessage);
