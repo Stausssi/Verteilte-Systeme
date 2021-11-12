@@ -26,6 +26,21 @@ class Raft implements Runnable {
         }
     };
 
+    protected final TimerTask heartbeatTask = new TimerTask() {
+        @Override
+        public void run() {
+            //System.out.println("Heartbeat" + raftNode.name);
+
+            // Create the message object
+            Message heartbeat = new Message();
+            heartbeat.setSender(raftNode.name);
+            heartbeat.setMessageType(MessageType.RAFT_HEARTBEAT);
+
+            // Send a broadcast message
+            raftNode.broadcastMessages.add(heartbeat);
+        }
+    };
+
     public Raft(Node node) {
         this.raftNode = node;
     }
@@ -69,18 +84,6 @@ class Raft implements Runnable {
 
         // Send a broadcast message
         raftNode.broadcastMessages.add(election);
-    }
-
-    private void nodeHeartbeat() {
-        //System.out.println("Heartbeat" + raftNode.name);
-
-        // Create the message object
-        Message heartbeat = new Message();
-        heartbeat.setSender(raftNode.name);
-        heartbeat.setMessageType(MessageType.RAFT_HEARTBEAT);
-
-        // Send a broadcast message
-        raftNode.broadcastMessages.add(heartbeat);
     }
 
     private void writeEntry() {

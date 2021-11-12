@@ -10,6 +10,7 @@ import java.net.Socket;
 import java.net.UnknownHostException;
 import java.util.Collections;
 import java.util.Map;
+import java.util.Timer;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
@@ -36,6 +37,8 @@ public class Node implements Runnable {
     protected boolean hasVoted = false;
     private int votesReceived = 0;
     private int voteCount = 0;
+
+    private Timer leaderHeartbeat;
 
     // Create threads for socket server and client
     protected final SocketServer socketServer = new SocketServer();
@@ -273,14 +276,25 @@ public class Node implements Runnable {
                             leader.setPayload(state);
 
                             broadcastMessages.add(leader);
+
+                            // Start the heartbeat task
+                            if (leaderHeartbeat != null) {
+                                leaderHeartbeat.cancel();
+                                leaderHeartbeat.purge();
+                            }
+                            leaderHeartbeat = new Timer();
+                            leaderHeartbeat.schedule(raft.heartbeatTask, 0, 500);
+
                         } else if (votesReceived == connections.size()) {
                             logConsole("I was not elected Sadge");
 
+                            // Reset own state and values
                             state = State.FOLLOWER;
                             hasVoted = false;
                             voteCount = 0;
                             votesReceived = 0;
 
+                            // Inform others of new state
                             Message stateMsg = new Message();
                             stateMsg.setSender(name);
                             stateMsg.setMessageType(MessageType.STATE);
@@ -292,6 +306,24 @@ public class Node implements Runnable {
                     break;
                 case RAFT_HEARTBEAT:
                     logConsole("Heartbeat received by " + incomingMessage.getSender());
+                    if (state == State.LEADER) {
+                        if (incomingMessage.getPayload() == State.FOLLOWER) {
+                            // Reset timer for node closure
+                        }
+                    } else {
+                        if (incomingMessage.getPayload() == State.LEADER) {
+                            // Reset timer for reelection
+
+                            // Send heartbeat back
+                            Message heartbeat = new Message();
+                            heartbeat.setSender(name);
+                            heartbeat.setReceiver(incomingMessage.getSender());
+                            heartbeat.setPayload(state);
+                            heartbeat.setMessageType(MessageType.RAFT_HEARTBEAT);
+
+                            outgoingMessages.put(connection, heartbeat);
+                        }
+                    }
                     break;
                 case STATE:
                     logConsole("State of connection " + connection.getName() + " changed to " + incomingMessage.getPayload());
@@ -305,6 +337,7 @@ public class Node implements Runnable {
                         state = State.FOLLOWER;
                         voteCount = 0;
                         hasVoted = false;
+
                     }
                     break;
                 default:
