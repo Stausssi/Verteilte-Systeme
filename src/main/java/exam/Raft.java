@@ -49,7 +49,7 @@ class Raft implements Runnable {
     private boolean checkLeader() {
         // Check whether there is a node which is not a Follower
         for (Connection c : raftNode.connections.values()) {
-            if (c.getState() != State.FOLLOWER || raftNode.state == State.LEADER) {
+            if (c.getState() != State.FOLLOWER || raftNode.state != State.FOLLOWER) {
                 return true;
             }
         }
