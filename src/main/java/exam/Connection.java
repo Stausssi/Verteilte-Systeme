@@ -4,14 +4,17 @@ import tasks.messages.ObjectMessageHandler;
 
 import java.net.InetAddress;
 import java.net.Socket;
+import java.util.Timer;
 
-public final class Connection {
+public class Connection {
     private final InetAddress address;
     private final int port;
     private String name;
     private final Socket socket;
     private final ObjectMessageHandler messageHandler;
     private State state = State.FOLLOWER;
+
+    protected Timer nodeTimeout;
 
     public Connection(InetAddress address, int port, String name, Socket socket) {
         this.address = address;
@@ -60,5 +63,13 @@ public final class Connection {
 
     public State getState() {
         return state;
+    }
+
+    public Timer getNodeTimeout() {
+        return nodeTimeout;
+    }
+
+    public void setNodeTimeout(Timer nodeTimeout) {
+        this.nodeTimeout = nodeTimeout;
     }
 }

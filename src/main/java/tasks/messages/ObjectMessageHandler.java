@@ -46,5 +46,4 @@ public class ObjectMessageHandler {
     public boolean isMessageAvailable() throws IOException {
         return socket.getInputStream().available() != 0;
     }
-
 }

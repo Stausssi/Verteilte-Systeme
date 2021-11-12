@@ -11,6 +11,7 @@ import java.net.UnknownHostException;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Timer;
+import java.util.TimerTask;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
@@ -39,6 +40,7 @@ public class Node implements Runnable {
     private int voteCount = 0;
 
     private Timer leaderHeartbeat;
+    private Timer leaderTimeout;
 
     // Create threads for socket server and client
     protected final SocketServer socketServer = new SocketServer();
@@ -110,11 +112,6 @@ public class Node implements Runnable {
 
                         if (connectionName != null && port > 0) {
                             // Send the node a serialized version of IP:Port combinations in the connections object
-                            Message welcome = new Message();
-                            welcome.setSender(name);
-                            welcome.setReceiver(connectionName);
-                            welcome.setMessageType(MessageType.WELCOME);
-
                             // Add each connection key IP:Port to a string, separated by ,
                             StringBuilder connectionsBuilder = new StringBuilder();
                             for (String key : Collections.list(connections.keys())) {
@@ -128,8 +125,11 @@ public class Node implements Runnable {
                             }
 
 //                            logConsole("Cluster Keys: " + connectionsBuilder);
-                            welcome.setPayload(connectionsBuilder.toString());
-                            tempHandler.write(welcome);
+                            tempHandler.write(createMessage(
+                                    connectionName,
+                                    MessageType.WELCOME,
+                                    connectionsBuilder.toString()
+                            ));
 
                             // Add newConnection to the HashMap
                             connections.put(
@@ -138,13 +138,11 @@ public class Node implements Runnable {
                             );
 
                             // Inform the new node of the current state of this node
-                            Message state = new Message();
-                            state.setSender(name);
-                            state.setReceiver(connectionName);
-                            state.setMessageType(MessageType.STATE);
-                            state.setPayload(Node.this.state);
-
-                            tempHandler.write(state);
+                            tempHandler.write(createMessage(
+                                    connectionName,
+                                    MessageType.STATE,
+                                    state
+                            ));
                         }
                     } else if (firstMessage.getMessageType() == MessageType.RSA && "Client".equalsIgnoreCase(firstMessage.getSender())) {
 //                        logConsole("Received RSA information from the client!");
@@ -155,13 +153,11 @@ public class Node implements Runnable {
                         broadcastMessages.add(firstMessage);
 
                         // For now, just answer with the primes
-                        Message primes = new Message();
-                        primes.setMessageType(MessageType.PRIMES);
-                        primes.setSender(name);
-                        primes.setReceiver(firstMessage.getSender());
-                        primes.setPayload("17594063653378370033, 15251864654563933379");
-
-                        tempHandler.write(primes);
+                        tempHandler.write(createMessage(
+                                firstMessage.getSender(),
+                                MessageType.PRIMES,
+                                "17594063653378370033, 15251864654563933379"
+                        ));
                     } else {
                         newConnection.close();
                     }
@@ -240,14 +236,11 @@ public class Node implements Runnable {
                     // Reply to the candidate with whether we already voted.
                     // Already voted -> false
                     // Not voted -> true
-                    Message reply = new Message();
-                    reply.setSender(name);
-                    reply.setMessageType(MessageType.RAFT_VOTE);
-                    reply.setPayload(!hasVoted);
-                    reply.setReceiver(incomingMessage.getSender());
-
-                    // Send the message
-                    outgoingMessages.put(connection, reply);
+                    outgoingMessages.put(connection, createMessage(
+                            incomingMessage.getSender(),
+                            MessageType.RAFT_VOTE,
+                            !hasVoted
+                    ));
 
                     if (!hasVoted) {
                         logConsole(incomingMessage.getSender() + " has my vote!");
@@ -260,7 +253,7 @@ public class Node implements Runnable {
                 case RAFT_VOTE:
                     if (state == State.CANDIDATE) {
                         // Add one to the vote count if the node elected this node
-                        voteCount = (boolean) incomingMessage.getPayload() ? voteCount + 1: voteCount;
+                        voteCount = (boolean) incomingMessage.getPayload() ? voteCount + 1 : voteCount;
                         votesReceived++;
 
                         // Check whether this node has enough votes
@@ -270,21 +263,21 @@ public class Node implements Runnable {
                             state = State.LEADER;
 
                             // Inform everyone of the new leader
-                            Message leader = new Message();
-                            leader.setSender(name);
-                            leader.setMessageType(MessageType.STATE);
-                            leader.setPayload(state);
-
-                            broadcastMessages.add(leader);
+                            broadcastMessages.add(createMessage(
+                                    "",
+                                    MessageType.STATE,
+                                    state
+                            ));
 
                             // Start the heartbeat task
                             if (leaderHeartbeat != null) {
                                 leaderHeartbeat.cancel();
                                 leaderHeartbeat.purge();
                             }
-                            leaderHeartbeat = new Timer();
-                            leaderHeartbeat.schedule(raft.heartbeatTask, 0, 500);
 
+                            //
+                            leaderHeartbeat = new Timer();
+                            leaderHeartbeat.schedule(raft.createHeartbeatTask(), 50, 500);
                         } else if (votesReceived == connections.size()) {
                             logConsole("I was not elected Sadge");
 
@@ -295,33 +288,60 @@ public class Node implements Runnable {
                             votesReceived = 0;
 
                             // Inform others of new state
-                            Message stateMsg = new Message();
-                            stateMsg.setSender(name);
-                            stateMsg.setMessageType(MessageType.STATE);
-                            stateMsg.setPayload(state);
-
-                            broadcastMessages.add(stateMsg);
+                            broadcastMessages.add(createMessage(
+                                    "",
+                                    MessageType.STATE,
+                                    state
+                            ));
                         }
                     }
                     break;
                 case RAFT_HEARTBEAT:
-                    logConsole("Heartbeat received by " + incomingMessage.getSender());
+//                    logConsole("Heartbeat received by " + incomingMessage.getSender());
                     if (state == State.LEADER) {
                         if (incomingMessage.getPayload() == State.FOLLOWER) {
                             // Reset timer for node closure
+                            Timer temp = connection.getNodeTimeout();
+                            if (temp != null) {
+                                temp.cancel();
+                                temp.purge();
+                            }
+
+                            temp = new Timer();
+                            temp.schedule(new NodeTimeoutTask(connection) {
+                                @Override
+                                public void run() {
+                                    logConsole(this.node.getName() + " disconnected!");
+                                }
+                            }, 2000);
+
+                            connection.setNodeTimeout(temp);
+                            logConsole(connection.getName() + " is still alive");
                         }
                     } else {
                         if (incomingMessage.getPayload() == State.LEADER) {
                             // Reset timer for reelection
+                            if (leaderTimeout != null) {
+                                leaderTimeout.cancel();
+                                leaderTimeout.purge();
+                            }
+
+                            leaderTimeout= new Timer();
+                            leaderTimeout.schedule(new TimerTask() {
+                                @Override
+                                public void run() {
+                                    logConsole("The leader has timeout!");
+                                }
+                            }, 2000);
 
                             // Send heartbeat back
-                            Message heartbeat = new Message();
-                            heartbeat.setSender(name);
-                            heartbeat.setReceiver(incomingMessage.getSender());
-                            heartbeat.setPayload(state);
-                            heartbeat.setMessageType(MessageType.RAFT_HEARTBEAT);
+                            outgoingMessages.put(connection, createMessage(
+                                    incomingMessage.getSender(),
+                                    MessageType.RAFT_HEARTBEAT,
+                                    state
+                            ));
 
-                            outgoingMessages.put(connection, heartbeat);
+                            logConsole("Leader is still alive!");
                         }
                     }
                     break;
@@ -337,7 +357,6 @@ public class Node implements Runnable {
                         state = State.FOLLOWER;
                         voteCount = 0;
                         hasVoted = false;
-
                     }
                     break;
                 default:
@@ -465,5 +484,23 @@ public class Node implements Runnable {
 
     public void logConnections() {
         logConsole("Connected to: " + connections);
+    }
+
+    /**
+     * This method creates a Message object for you with the given params
+     *
+     * @param receiver the name of the receiver of the message
+     * @param type     the type of the message
+     * @param payload  the payload of the message
+     * @return the Message object
+     */
+    protected Message createMessage(String receiver, MessageType type, Object payload) {
+        Message msg = new Message();
+        msg.setSender(name);
+        msg.setReceiver(receiver);
+        msg.setMessageType(type);
+        msg.setPayload(payload);
+
+        return msg;
     }
 }
