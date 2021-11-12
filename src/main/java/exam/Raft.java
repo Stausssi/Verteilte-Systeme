@@ -1,6 +1,7 @@
 package exam;
 
 import tasks.messages.Message;
+
 import java.util.Timer;
 import java.util.TimerTask;
 
@@ -39,18 +40,24 @@ class Raft implements Runnable {
             e.printStackTrace();
         }
 
-
         //Create random timeout for thread for election between 5-10 seconds
         long randomTimeout = (long) (Math.random() * (10000 - 5000 + 1) + 5000);
-        electionTimeout.schedule(timeoutTask,0,randomTimeout);
+        electionTimeout.schedule(timeoutTask, 0, randomTimeout);
     }
 
 
     private boolean checkLeader() {
+        // Check whether there is a node which is not a Follower
+        for (Connection c : raftNode.connections.values()) {
+            if (c.getState() != State.FOLLOWER || raftNode.state == State.LEADER) {
+                return true;
+            }
+        }
+
         return false;
     }
 
-    private void startElection(){
+    private void startElection() {
 //        System.out.println("Election started!");
         raftNode.state = State.CANDIDATE;
 
@@ -67,7 +74,7 @@ class Raft implements Runnable {
 
     }
 
-    private void nodeHeartbeat(){
+    private void nodeHeartbeat() {
         //System.out.println("Heartbeat" + raftNode.name);
 
         // Create the message object

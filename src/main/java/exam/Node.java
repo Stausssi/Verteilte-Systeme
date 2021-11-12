@@ -32,12 +32,23 @@ public class Node implements Runnable {
     public volatile ConcurrentHashMap<Connection, Message> outgoingMessages = new ConcurrentHashMap<>();
     public volatile ConcurrentLinkedQueue<Message> broadcastMessages = new ConcurrentLinkedQueue<>();
 
+    // Raft stuff
+    protected boolean hasVoted = false;
+    private int voteCount = 0;
+
     // Create threads for socket server and client
     protected final SocketServer socketServer = new SocketServer();
     private final Raft raft = new Raft(this);
 
     public Node(int port, String name) throws UnknownHostException {
         this.address = InetAddress.getByName("localhost");
+        this.port = port;
+        this.name = name;
+        this.state = State.FOLLOWER;
+    }
+
+    public Node(InetAddress address, int port, String name) {
+        this.address = address;
         this.port = port;
         this.name = name;
         this.state = State.FOLLOWER;
@@ -121,6 +132,15 @@ public class Node implements Runnable {
                                     createConnectionKey(newConnection.getInetAddress(), port),
                                     new Connection(newConnection.getInetAddress(), port, connectionName, newConnection)
                             );
+
+                            // Inform the new node of the current state of this node
+                            Message state = new Message();
+                            state.setSender(name);
+                            state.setReceiver(connectionName);
+                            state.setMessageType(MessageType.STATE);
+                            state.setPayload(Node.this.state);
+
+                            tempHandler.write(state);
                         }
                     } else if (firstMessage.getMessageType() == MessageType.RSA && "Client".equalsIgnoreCase(firstMessage.getSender())) {
 //                        logConsole("Received RSA information from the client!");
@@ -203,7 +223,7 @@ public class Node implements Runnable {
         private void parseMessage(Message incomingMessage, Connection connection) {
 //            logConsole("Incoming " + incomingMessage + "\nFrom Connection: " + connection.getName());
 
-             switch (incomingMessage.getMessageType()) {
+            switch (incomingMessage.getMessageType()) {
                 case REQUEST:
                     logConsole("This is a request");
                     break;
@@ -212,9 +232,64 @@ public class Node implements Runnable {
                     break;
                 case RAFT_ELECTION:
                     logConsole("Raft Election started by " + incomingMessage.getSender());
+
+                    // Reply to the candidate with whether we already voted.
+                    // Already voted -> false
+                    // Not voted -> true
+                    Message reply = new Message();
+                    reply.setSender(name);
+                    reply.setMessageType(MessageType.RAFT_VOTE);
+                    reply.setPayload(!hasVoted);
+                    reply.setReceiver(incomingMessage.getSender());
+
+                    // Send the message
+                    outgoingMessages.put(connection, reply);
+
+                    if (!hasVoted) {
+                        logConsole("He has my vote!");
+                        connection.setState(State.CANDIDATE);
+                        hasVoted = true;
+                    } else {
+                        logConsole("He does not have my vote!");
+                    }
+                    break;
+                case RAFT_VOTE:
+                    if (state == State.CANDIDATE) {
+                        // Add one to the vote count if the node elected this node
+                        voteCount = (boolean) incomingMessage.getPayload() ? voteCount + 1: voteCount;
+
+                        // Check whether this node has enough votes
+                        if (voteCount > connections.size() / 2) {
+                            logConsole("Im the boss in town");
+
+                            state = State.LEADER;
+
+                            // Inform everyone of the new leader
+                            Message leader = new Message();
+                            leader.setSender(name);
+                            leader.setMessageType(MessageType.STATE);
+                            leader.setPayload(state);
+
+                            broadcastMessages.add(leader);
+                        }
+                    }
                     break;
                 case RAFT_HEARTBEAT:
                     logConsole("Heartbeat received by " + incomingMessage.getSender());
+                    break;
+                case STATE:
+                    logConsole("State of connection " + connection.getName() + " changed to " + incomingMessage.getPayload());
+
+                    // Grab the new state
+                    State incomingState = (State) incomingMessage.getPayload();
+                    connection.setState(incomingState);
+
+                    // Reset election stuff
+                    if (incomingState == State.LEADER) {
+                        state = State.FOLLOWER;
+                        voteCount = 0;
+                        hasVoted = false;
+                    }
                     break;
                 default:
                     logConsole("Message fits no type " + incomingMessage);
@@ -254,33 +329,37 @@ public class Node implements Runnable {
 //                    logConsole("Welcome message received: " + welcome);
                     String connectionName = welcome.getSender();
 
-                    // Save the connection
-                    connections.put(
-                            createConnectionKey(address, port),
-                            new Connection(address, port, connectionName, clientSocket)
-                    );
+                    // Get the state of the new node
+                    Message state = tempHandler.read();
+                    if (state.getMessageType() == MessageType.STATE) {
+                        // Save the connection
+                        connections.put(
+                                createConnectionKey(address, port),
+                                new Connection(address, port, connectionName, clientSocket, (State) state.getPayload())
+                        );
 
-                    // Go through every given combination of IP:Port by splitting at the comma
-                    for (String connectionInformation : ((String) welcome.getPayload()).split(",")) {
-                        if (connectionInformation.length() > 0 && !connections.containsKey(connectionInformation)) {
+                        // Go through every given combination of IP:Port by splitting at the comma
+                        for (String connectionInformation : ((String) welcome.getPayload()).split(",")) {
+                            if (connectionInformation.length() > 0 && !connections.containsKey(connectionInformation)) {
 //                            logConsole("new connection information: " + connectionInformation);
-                            String[] connection = connectionInformation.split(":");
-                            String[] ipParts = connection[0].split("\\.");
+                                String[] connection = connectionInformation.split(":");
+                                String[] ipParts = connection[0].split("\\.");
 
-                            // Connect to the new node
-                            connectTo(
-                                    // Create the InetAddress object
-                                    InetAddress.getByAddress(
-                                            new byte[]{
-                                                    (byte) Integer.parseInt(ipParts[0]),
-                                                    (byte) Integer.parseInt(ipParts[1]),
-                                                    (byte) Integer.parseInt(ipParts[2]),
-                                                    (byte) Integer.parseInt(ipParts[3]),
-                                            }
-                                    ),
-                                    // Parse the port
-                                    Integer.parseInt(connection[1])
-                            );
+                                // Connect to the new node
+                                connectTo(
+                                        // Create the InetAddress object
+                                        InetAddress.getByAddress(
+                                                new byte[]{
+                                                        (byte) Integer.parseInt(ipParts[0]),
+                                                        (byte) Integer.parseInt(ipParts[1]),
+                                                        (byte) Integer.parseInt(ipParts[2]),
+                                                        (byte) Integer.parseInt(ipParts[3]),
+                                                }
+                                        ),
+                                        // Parse the port
+                                        Integer.parseInt(connection[1])
+                                );
+                            }
                         }
                     }
                 }

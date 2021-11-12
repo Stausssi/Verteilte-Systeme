@@ -8,6 +8,9 @@ public enum MessageType {
     // A message of the type WELCOME contains a list of IP:Port combinations and is sent to a new client
     WELCOME("welcome"),
 
+    // A message of the type STATE contains the current state of the Node
+    STATE("state"),
+
     // The following message types are needed for the raft communication
     // A message of the type RAFT_HEARTBEAT is sent every X ns to notify every node that this node is still alive
     RAFT_HEARTBEAT("heartbeat"),
@@ -15,8 +18,8 @@ public enum MessageType {
     // A message of the type RAFT_ELECTION is sent if a node decides to become the leader
     RAFT_ELECTION("election"),
 
-    // A message of the type RAFT_APPROVE is send to the node which started the election, if the node approves
-    RAFT_APPROVE("approve_election"),
+    // A message of the type RAFT_VOTE is send to the node which started the election and contains whether he has our vote.
+    RAFT_VOTE("vote"),
 
     // A message of the type REQUEST contains a request. The type of the request is specified in the payload.
     REQUEST("request"),
