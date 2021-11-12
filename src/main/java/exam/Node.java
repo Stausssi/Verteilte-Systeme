@@ -34,6 +34,7 @@ public class Node implements Runnable {
 
     // Raft stuff
     protected boolean hasVoted = false;
+    private int votesReceived = 0;
     private int voteCount = 0;
 
     // Create threads for socket server and client
@@ -246,17 +247,18 @@ public class Node implements Runnable {
                     outgoingMessages.put(connection, reply);
 
                     if (!hasVoted) {
-                        logConsole("He has my vote!");
+                        logConsole(incomingMessage.getSender() + " has my vote!");
                         connection.setState(State.CANDIDATE);
                         hasVoted = true;
                     } else {
-                        logConsole("He does not have my vote!");
+                        logConsole(incomingMessage.getSender() + " does not have my vote!");
                     }
                     break;
                 case RAFT_VOTE:
                     if (state == State.CANDIDATE) {
                         // Add one to the vote count if the node elected this node
                         voteCount = (boolean) incomingMessage.getPayload() ? voteCount + 1: voteCount;
+                        votesReceived++;
 
                         // Check whether this node has enough votes
                         if (voteCount > connections.size() / 2) {
@@ -271,6 +273,20 @@ public class Node implements Runnable {
                             leader.setPayload(state);
 
                             broadcastMessages.add(leader);
+                        } else if (votesReceived == connections.size()) {
+                            logConsole("I was not elected Sadge");
+
+                            state = State.FOLLOWER;
+                            hasVoted = false;
+                            voteCount = 0;
+                            votesReceived = 0;
+
+                            Message stateMsg = new Message();
+                            stateMsg.setSender(name);
+                            stateMsg.setMessageType(MessageType.STATE);
+                            stateMsg.setPayload(state);
+
+                            broadcastMessages.add(stateMsg);
                         }
                     }
                     break;

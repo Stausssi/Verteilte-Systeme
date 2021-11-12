@@ -15,26 +15,23 @@ public class TestApplication {
         Thread thread4 = new Thread(node4);
 
         thread1.start();
-        Thread.sleep(1000);
-
         thread2.start();
+        thread3.start();
+        thread4.start();
+
         Thread.sleep(1000);
         node2.connectTo("localhost", 4444);
 
-        thread3.start();
-        Thread.sleep(1000);
         node3.connectTo("localhost", 4445);
         node1.connectTo("localhost", 2342);
 
-        thread4.start();
-        Thread.sleep(1000);
         node4.connectTo("localhost", 4445);
 
-        Thread.sleep(1000);
-        node1.logConnections();
-        node2.logConnections();
-        node3.logConnections();
-        node4.logConnections();
+//        Thread.sleep(1000);
+//        node1.logConnections();
+//        node2.logConnections();
+//        node3.logConnections();
+//        node4.logConnections();
 
         try {
             thread1.join();

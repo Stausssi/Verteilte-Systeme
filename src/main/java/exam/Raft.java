@@ -40,9 +40,9 @@ class Raft implements Runnable {
             e.printStackTrace();
         }
 
-        //Create random timeout for thread for election between 5-10 seconds
-        long randomTimeout = (long) (Math.random() * (10000 - 5000 + 1) + 5000);
-        electionTimeout.schedule(timeoutTask, 0, randomTimeout);
+        //Create random timeout for thread for election between 130 and 300 milliseconds
+        long randomTimeout = (long) (Math.random() * (300 - 130 + 1) + 130);
+        electionTimeout.schedule(timeoutTask, 5, randomTimeout);
     }
 
 
@@ -60,6 +60,7 @@ class Raft implements Runnable {
     private void startElection() {
 //        System.out.println("Election started!");
         raftNode.state = State.CANDIDATE;
+        raftNode.hasVoted = true;
 
         // Create the message object
         Message election = new Message();
@@ -68,10 +69,6 @@ class Raft implements Runnable {
 
         // Send a broadcast message
         raftNode.broadcastMessages.add(election);
-    }
-
-    private void voteLeader() {
-
     }
 
     private void nodeHeartbeat() {
