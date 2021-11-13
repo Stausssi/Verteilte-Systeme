@@ -17,7 +17,7 @@ public class ObjectMessageHandler {
     }
 
     /**
-     * this method reads objects from a given socket
+     * Reads objects from the socket
      *
      * @return the message object or null , in case of an
      * error
@@ -25,6 +25,7 @@ public class ObjectMessageHandler {
     public Message read() {
         Message ret = null;
         try {
+            // Get the input stream and try reading on it
             ObjectInputStream inputStream = new ObjectInputStream(socket.getInputStream());
             ret = (Message) inputStream.readObject();
         } catch (Exception e) {
@@ -33,8 +34,14 @@ public class ObjectMessageHandler {
         return ret;
     }
 
+    /**
+     * Writes Message objects to the socket.
+
+     * @param message the message to write to the socket
+     */
     public void write(Message message) {
         try {
+            // Get the output stream and try writing on it
             ObjectOutputStream outputStream = new ObjectOutputStream(socket.getOutputStream());
             outputStream.writeObject(message);
 //            outputStream.flush();
@@ -43,6 +50,13 @@ public class ObjectMessageHandler {
         }
     }
 
+    /**
+     * Returns whether there is any data available on the input stream.
+     *
+     * @return true, if there is a Message object on the input stream.
+     *
+     * @throws IOException if something went wrong.
+     */
     public boolean isMessageAvailable() throws IOException {
         return socket.getInputStream().available() != 0;
     }

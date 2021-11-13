@@ -1,7 +1,5 @@
 package exam;
 
-import tasks.messages.Message;
-
 import java.util.Timer;
 import java.util.TimerTask;
 

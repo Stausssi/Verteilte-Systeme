@@ -1,5 +1,8 @@
 package exam;
 
+/**
+ * Contains information about every supported type a Message object can be of
+ */
 public enum MessageType {
     // A message of the type HELLO contains the name (sender) and port of a connection. It is the message that initiates
     // the communication between nodes

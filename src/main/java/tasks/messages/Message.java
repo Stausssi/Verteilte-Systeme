@@ -6,10 +6,8 @@ import java.io.Serializable;
 import java.time.Instant;
 
 /**
- * This class is a sendable message object , further
- * information may be added
+ * This class is a sendable message object containing important information
  */
-
 public class Message implements Serializable {
     private String sender;
     private String receiver;
@@ -18,13 +16,6 @@ public class Message implements Serializable {
     private String type; // may be an enum
     private MessageType messageType;
     private int sequenceNo = -1;
-
-    /**
-     * Default - Constructor
-     */
-    public Message() {
-    }
-    /* GETTER - SETTER */
 
     public String getSender() {
         return sender;

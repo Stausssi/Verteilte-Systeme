@@ -1,7 +1,5 @@
 package exam;
 
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 import java.net.UnknownHostException;
 
 public class TestApplication {

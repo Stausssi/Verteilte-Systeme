@@ -11,7 +11,6 @@ import java.net.UnknownHostException;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Timer;
-import java.util.TimerTask;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
@@ -53,6 +52,17 @@ public class Node implements Runnable {
     private final CommunicationHandler communicationHandler = new CommunicationHandler();
     private final Raft raft = new Raft(this);
 
+    /**
+     * A Node represents a working element of the decryption task.
+     * It has a server socket , to which other nodes can connect and send messages to, and a client socket, which will
+     * connect and send messages to other nodes.
+     * One Node in the system is the coordinator, which will distribute the tasks to the other nodes (so-called workers)
+     *
+     * @param port the port the socket server will run on
+     * @param name the name of the node
+     *
+     * @throws UnknownHostException if the host name is invalid
+     */
     public Node(int port, String name) throws UnknownHostException {
         this.address = InetAddress.getByName("localhost");
         this.port = port;
@@ -60,6 +70,16 @@ public class Node implements Runnable {
         this.state = State.FOLLOWER;
     }
 
+    /**
+     * A Node represents a working element of the decryption task.
+     * It has a server socket , to which other nodes can connect and send messages to, and a client socket, which will
+     * connect and send messages to other nodes.
+     * One Node in the system is the coordinator, which will distribute the tasks to the other nodes (so-called workers)
+     *
+     * @param address the address of the socket server
+     * @param port the port the socket server will run on
+     * @param name the name of the node
+     */
     public Node(InetAddress address, int port, String name) {
         this.address = address;
         this.port = port;
@@ -89,7 +109,8 @@ public class Node implements Runnable {
 
 
     /**
-     * This class will handle the incoming connections and receive messages.
+     * This class will accept incoming connections and save them to a Connection class, which will be later used for
+     * communication.
      */
     protected class SocketServer implements Runnable {
         @Override
@@ -109,8 +130,10 @@ public class Node implements Runnable {
                     Socket newConnection = serverSocket.accept();
                     ObjectMessageHandler tempHandler = new ObjectMessageHandler(newConnection);
 
-                    // Read the "hello" message
+                    // Read the first message the new connection sent
                     Message firstMessage = tempHandler.read();
+
+                    // If it's a "hello" message, the new connection is a Node
                     if (firstMessage.getMessageType() == MessageType.HELLO) {
 //                        logConsole("Hello message received: " + hello);
 
@@ -153,6 +176,8 @@ public class Node implements Runnable {
                                     state
                             ));
                         }
+
+                    // Otherwise, the new connection might be a client
                     } else if (firstMessage.getMessageType() == MessageType.RSA && "Client".equalsIgnoreCase(firstMessage.getSender())) {
                         logConsole("Received RSA information from the client!");
 //                        String publicKey = (String) firstMessage.getPayload();
@@ -171,6 +196,8 @@ public class Node implements Runnable {
                             // Parse the message from the client directly
                             communicationHandler.parseMessage(firstMessage, clientConnection);
                         }
+
+                    // Otherwise, close the connection
                     } else {
                         newConnection.close();
                     }
@@ -189,6 +216,7 @@ public class Node implements Runnable {
         @Override
         public void run() {
             logConsole("The CommunicationHandler was started");
+
             while (nodeRunning) {
                 // Iterate over every connection
                 for (Map.Entry<String, Connection> entry : connections.entrySet()) {
@@ -227,6 +255,12 @@ public class Node implements Runnable {
             }
         }
 
+        /**
+         * Parsed the given message by using the MessageType and acts accordingly.
+         *
+         * @param incomingMessage the message to parse and handle
+         * @param connection the connection the message came from
+         */
         private void parseMessage(Message incomingMessage, Connection connection) {
 //            logConsole("Incoming " + incomingMessage + "\nFrom Connection: " + connection.getName());
 
@@ -285,9 +319,11 @@ public class Node implements Runnable {
                             !hasVoted
                     ));
 
+                    // The connection is a leader candidate
+                    connection.setState(State.CANDIDATE);
+
                     if (!hasVoted) {
                         logConsole(incomingMessage.getSender() + " has my vote!");
-                        connection.setState(State.CANDIDATE);
                         hasVoted = true;
                     } else {
                         logConsole(incomingMessage.getSender() + " does not have my vote!");
@@ -328,7 +364,7 @@ public class Node implements Runnable {
 //                    logConsole("Heartbeat received by " + incomingMessage.getSender());
                     if (state == State.LEADER) {
                         if (incomingMessage.getPayload() == State.FOLLOWER) {
-                            // Reset timer for node closure
+                            // Reset timer for node disconnection
                             Timer temp = connection.getNodeTimeout();
                             if (temp != null) {
                                 temp.cancel();
@@ -402,7 +438,7 @@ public class Node implements Runnable {
     }
 
     /**
-     * This method creates a new socket and connects to the given address and port.
+     * Creates a new socket and connects to the given address and port.
      *
      * @param address The address of the socket server to connect to
      * @param port    The port of the socket server to connect to
@@ -469,7 +505,7 @@ public class Node implements Runnable {
     }
 
     /**
-     * This method connects to a socket with a given host name. It converts the host name and calls connectTo with an
+     * Connects to a socket with a given host name. It converts the host name and calls connectTo with an
      * InetAddress.
      *
      * @param host The hostname to convert to an address.
@@ -484,7 +520,7 @@ public class Node implements Runnable {
     }
 
     /**
-     * This method logs a given message to the console and prepends the node name in front of the message
+     * Logs a given message to the console and prepends the node name in front of the message
      *
      * @param log The message to log to sysout
      */
@@ -493,7 +529,7 @@ public class Node implements Runnable {
     }
 
     /**
-     * This method creates a connection key consisting of IP and port
+     * Creates a connection key consisting of IP and port
      *
      * @param address The address of the connection
      * @param port    The port of the connection
@@ -504,7 +540,7 @@ public class Node implements Runnable {
     }
 
     /**
-     * This small helper removes the host name from the string representation of an InetAddress.
+     * Removes the host name from the string representation of an InetAddress.
      *
      * @param address The address
      * @return A String containing the IP-Address of the InetAddress.
@@ -513,12 +549,15 @@ public class Node implements Runnable {
         return address.toString().split("/")[1];
     }
 
+    /**
+     * Prints out the connections of this node.
+     */
     public void logConnections() {
         logConsole("Connected to: " + connections);
     }
 
     /**
-     * This method creates a Message object for you with the given params
+     * Creates a Message object with the given params
      *
      * @param receiver the name of the receiver of the message
      * @param type     the type of the message
@@ -535,6 +574,12 @@ public class Node implements Runnable {
         return msg;
     }
 
+    /**
+     * Creates a broadcast method with the given type and payload.
+     *
+     * @param messageType the type of the broadcast message
+     * @param payload the payload of the broadcast
+     */
     protected void addBroadcastMessage(MessageType messageType, Object payload) {
         broadcastMessages.add(createMessage(
                 "",
@@ -543,15 +588,12 @@ public class Node implements Runnable {
         ));
     }
 
-    public void stopNode() {
-        nodeRunning = false;
-
-        if (leaderTimeout != null) {
-            leaderTimeout.cancel();
-            leaderTimeout.purge();
-        }
-    }
-
+    /**
+     * Handles the timeout of a Node by removing it from the connections map and broadcasting the disconnect if this Node
+     * is the leader.
+     *
+     * @param connection the connection of the disconnected Node.
+     */
     private void handleNodeTimeout(Connection connection) {
         // Broadcast the timeout if this node is the leader
         String connectionKey = createConnectionKey(connection.getAddress(), connection.getPort());
@@ -562,10 +604,25 @@ public class Node implements Runnable {
         connections.remove(connectionKey);
     }
 
+    /**
+     * Resets the variables needed for the raft election.
+     */
     private void resetRaftElection() {
         state = State.FOLLOWER;
         voteCount = 0;
         votesReceived = 0;
         hasVoted = false;
+    }
+
+    /**
+     * Stops the execution of the SocketServer and CommunicationHandler.
+     */
+    public void stopNode() {
+        nodeRunning = false;
+
+        if (leaderTimeout != null) {
+            leaderTimeout.cancel();
+            leaderTimeout.purge();
+        }
     }
 }
