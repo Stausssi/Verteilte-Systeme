@@ -23,7 +23,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  */
 public class Node implements Runnable {
     private static final int MAX_INCOMING_CLIENTS = 100;
-    private boolean allowNewConnections = true;
+    private boolean nodeRunning = true;
 
     private final InetAddress address;
     private final int port;
@@ -97,7 +97,7 @@ public class Node implements Runnable {
 
                 logConsole("Started server socket on: " + serverSocket);
 
-                while (allowNewConnections) {
+                while (nodeRunning) {
                     // Accept a new connection
                     Socket newConnection = serverSocket.accept();
                     ObjectMessageHandler tempHandler = new ObjectMessageHandler(newConnection);
@@ -176,7 +176,7 @@ public class Node implements Runnable {
         @Override
         public void run() {
             logConsole("The CommunicationHandler was started");
-            while (true) {
+            while (nodeRunning) {
                 // Iterate over every connection
                 for (Map.Entry<String, Connection> entry : connections.entrySet()) {
                     // Get the connection object and the message handler
@@ -262,20 +262,12 @@ public class Node implements Runnable {
 
                             state = State.LEADER;
 
-                            // Inform everyone of the new leader
-                            broadcastMessages.add(createMessage(
-                                    "",
-                                    MessageType.STATE,
-                                    state
-                            ));
-
                             // Start the heartbeat task
                             if (leaderHeartbeat != null) {
                                 leaderHeartbeat.cancel();
                                 leaderHeartbeat.purge();
                             }
 
-                            //
                             leaderHeartbeat = new Timer();
                             leaderHeartbeat.schedule(raft.createHeartbeatTask(), 50, 500);
                         } else if (votesReceived == connections.size()) {
@@ -286,14 +278,15 @@ public class Node implements Runnable {
                             hasVoted = false;
                             voteCount = 0;
                             votesReceived = 0;
-
-                            // Inform others of new state
-                            broadcastMessages.add(createMessage(
-                                    "",
-                                    MessageType.STATE,
-                                    state
-                            ));
+                        } else {
+                            break;
                         }
+
+                        // Inform everyone of the new state
+                        addBroadcastMessage(
+                                MessageType.STATE,
+                                state
+                        );
                     }
                     break;
                 case RAFT_HEARTBEAT:
@@ -312,11 +305,12 @@ public class Node implements Runnable {
                                 @Override
                                 public void run() {
                                     logConsole(this.node.getName() + " disconnected!");
+                                    handleNodeTimeout(this.node);
                                 }
                             }, 2000);
 
                             connection.setNodeTimeout(temp);
-                            logConsole(connection.getName() + " is still alive");
+//                            logConsole(connection.getName() + " is still alive");
                         }
                     } else {
                         if (incomingMessage.getPayload() == State.LEADER) {
@@ -326,11 +320,12 @@ public class Node implements Runnable {
                                 leaderTimeout.purge();
                             }
 
-                            leaderTimeout= new Timer();
-                            leaderTimeout.schedule(new TimerTask() {
+                            leaderTimeout = new Timer();
+                            leaderTimeout.schedule(new NodeTimeoutTask(connection) {
                                 @Override
                                 public void run() {
-                                    logConsole("The leader has timeout!");
+                                    logConsole("The leader has died!");
+                                    handleNodeTimeout(this.node);
                                 }
                             }, 2000);
 
@@ -341,7 +336,7 @@ public class Node implements Runnable {
                                     state
                             ));
 
-                            logConsole("Leader is still alive!");
+//                            logConsole("Leader is still alive!");
                         }
                     }
                     break;
@@ -358,6 +353,10 @@ public class Node implements Runnable {
                         voteCount = 0;
                         hasVoted = false;
                     }
+                    break;
+                case DISCONNECT:
+                    logConsole("Node with key " + incomingMessage.getPayload() + " disconnected!");
+                    connections.remove((String) incomingMessage.getPayload());
                     break;
                 default:
                     logConsole("Message fits no type " + incomingMessage);
@@ -502,5 +501,32 @@ public class Node implements Runnable {
         msg.setPayload(payload);
 
         return msg;
+    }
+
+    protected void addBroadcastMessage(MessageType messageType, Object payload) {
+        broadcastMessages.add(createMessage(
+                "",
+                messageType,
+                payload
+        ));
+    }
+
+    public void stopNode() {
+        nodeRunning = false;
+
+        if (leaderTimeout != null) {
+            leaderTimeout.cancel();
+            leaderTimeout.purge();
+        }
+    }
+
+    private void handleNodeTimeout(Connection connection) {
+        // Broadcast the timeout if this node is the leader
+        String connectionKey = createConnectionKey(connection.getAddress(), connection.getPort());
+        if (state == State.LEADER) {
+            addBroadcastMessage(MessageType.DISCONNECT, connectionKey);
+        }
+
+        connections.remove(connectionKey);
     }
 }

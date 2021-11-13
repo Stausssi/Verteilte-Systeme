@@ -22,6 +22,8 @@ class Raft implements Runnable {
             //System.out.println("Raft: Connection found!");
             if (!checkLeader()) {
                 startElection();
+            } else {
+//                System.out.println("There is a leader");
             }
         }
     };
@@ -62,13 +64,11 @@ class Raft implements Runnable {
         raftNode.state = State.CANDIDATE;
         raftNode.hasVoted = true;
 
-        // Create the message object
-        Message election = new Message();
-        election.setSender(raftNode.name);
-        election.setMessageType(MessageType.RAFT_ELECTION);
-
         // Send a broadcast message
-        raftNode.broadcastMessages.add(election);
+        raftNode.addBroadcastMessage(
+                MessageType.RAFT_ELECTION,
+                ""
+        );
     }
 
     private void writeEntry() {
@@ -81,11 +81,10 @@ class Raft implements Runnable {
             public void run() {
                 //System.out.println("Heartbeat" + raftNode.name);
                 // Send a broadcast message
-                raftNode.broadcastMessages.add(raftNode.createMessage(
-                        "",
+                raftNode.addBroadcastMessage(
                         MessageType.RAFT_HEARTBEAT,
                         raftNode.state
-                ));
+                );
             }
         };
     }

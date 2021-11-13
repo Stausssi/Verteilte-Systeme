@@ -11,6 +11,9 @@ public enum MessageType {
     // A message of the type STATE contains the current state of the Node
     STATE("state"),
 
+    // A message of the type DISCONNECT notifies every node of a disconnect
+    DISCONNECT("disconnect"),
+
     // The following message types are needed for the raft communication
     // A message of the type RAFT_HEARTBEAT is sent every X ns to notify every node that this node is still alive
     RAFT_HEARTBEAT("heartbeat"),
