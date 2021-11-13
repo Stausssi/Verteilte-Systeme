@@ -53,10 +53,7 @@ public class Node implements Runnable {
     private final Raft raft = new Raft(this);
 
     /**
-     * A Node represents a working element of the decryption task.
-     * It has a server socket , to which other nodes can connect and send messages to, and a client socket, which will
-     * connect and send messages to other nodes.
-     * One Node in the system is the coordinator, which will distribute the tasks to the other nodes (so-called workers)
+     * Creates a new Node.
      *
      * @param port the port the socket server will run on
      * @param name the name of the node
@@ -71,10 +68,7 @@ public class Node implements Runnable {
     }
 
     /**
-     * A Node represents a working element of the decryption task.
-     * It has a server socket , to which other nodes can connect and send messages to, and a client socket, which will
-     * connect and send messages to other nodes.
-     * One Node in the system is the coordinator, which will distribute the tasks to the other nodes (so-called workers)
+     * Creates a new Node.
      *
      * @param address the address of the socket server
      * @param port the port the socket server will run on
