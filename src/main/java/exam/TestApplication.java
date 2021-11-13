@@ -35,10 +35,10 @@ public class TestApplication {
 //        node3.logConnections();
 //        node4.logConnections();
 
-        Thread.sleep(5000);
-        node4.stopNode();
-        Thread.sleep(2000);
-        node1.stopNode();
+//        Thread.sleep(5000);
+//        node4.stopNode();
+//        Thread.sleep(2000);
+//        node1.stopNode();
 
         try {
             thread1.join();

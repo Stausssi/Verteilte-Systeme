@@ -22,11 +22,11 @@ class Raft implements Runnable {
             //System.out.println("Raft: Connection found!");
             if (!checkLeader()) {
                 startElection();
-            } else {
-//                System.out.println("There is a leader");
             }
         }
     };
+
+    private Timer leaderHeartbeat;
 
     public Raft(Node node) {
         this.raftNode = node;
@@ -75,8 +75,14 @@ class Raft implements Runnable {
 
     }
 
-    protected TimerTask createHeartbeatTask() {
-        return new TimerTask() {
+    public void initLeaderHeartbeat() {
+        if (leaderHeartbeat != null) {
+            leaderHeartbeat.cancel();
+            leaderHeartbeat.purge();
+        }
+
+        leaderHeartbeat = new Timer();
+        leaderHeartbeat.schedule(new TimerTask() {
             @Override
             public void run() {
                 //System.out.println("Heartbeat" + raftNode.name);
@@ -86,6 +92,6 @@ class Raft implements Runnable {
                         raftNode.state
                 );
             }
-        };
+        }, 50, 500);
     }
 }

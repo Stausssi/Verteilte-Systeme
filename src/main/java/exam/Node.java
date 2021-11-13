@@ -23,12 +23,16 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  */
 public class Node implements Runnable {
     private static final int MAX_INCOMING_CLIENTS = 100;
+
     private boolean nodeRunning = true;
 
     private final InetAddress address;
     private final int port;
     protected final String name;
     protected State state;
+
+    private Connection leaderConnection;
+    private Connection clientConnection;
 
     public volatile ConcurrentHashMap<String, Connection> connections = new ConcurrentHashMap<>();
     public volatile ConcurrentHashMap<Connection, Message> outgoingMessages = new ConcurrentHashMap<>();
@@ -39,11 +43,14 @@ public class Node implements Runnable {
     private int votesReceived = 0;
     private int voteCount = 0;
 
-    private Timer leaderHeartbeat;
     private Timer leaderTimeout;
+
+    // RSA Stuff
+    private String publicKey;
 
     // Create threads for socket server and client
     protected final SocketServer socketServer = new SocketServer();
+    private final CommunicationHandler communicationHandler = new CommunicationHandler();
     private final Raft raft = new Raft(this);
 
     public Node(int port, String name) throws UnknownHostException {
@@ -64,7 +71,7 @@ public class Node implements Runnable {
     public void run() {
         // Create the threads for server, communicator and Raft protocol
         Thread serverThread = new Thread(socketServer);
-        Thread communicatorThread = new Thread(new CommunicationHandler());
+        Thread communicatorThread = new Thread(communicationHandler);
         Thread raftThread = new Thread(raft);
 
         serverThread.start();
@@ -115,8 +122,10 @@ public class Node implements Runnable {
                             // Add each connection key IP:Port to a string, separated by ,
                             StringBuilder connectionsBuilder = new StringBuilder();
                             for (String key : Collections.list(connections.keys())) {
-                                connectionsBuilder.append(key);
-                                connectionsBuilder.append(",");
+                                if (key.contains(":")) {
+                                    connectionsBuilder.append(key);
+                                    connectionsBuilder.append(",");
+                                }
                             }
 
                             // Remove the trailing comma
@@ -145,19 +154,23 @@ public class Node implements Runnable {
                             ));
                         }
                     } else if (firstMessage.getMessageType() == MessageType.RSA && "Client".equalsIgnoreCase(firstMessage.getSender())) {
-//                        logConsole("Received RSA information from the client!");
+                        logConsole("Received RSA information from the client!");
 //                        String publicKey = (String) firstMessage.getPayload();
 //                        logConsole("Public Key: " + publicKey);
 
-                        // Broadcast the public key
-                        broadcastMessages.add(firstMessage);
+                        // Save the client connection
+                        clientConnection = new Connection(newConnection.getInetAddress(), -1, "Client", newConnection);
 
-                        // For now, just answer with the primes
-                        tempHandler.write(createMessage(
-                                firstMessage.getSender(),
-                                MessageType.PRIMES,
-                                "17594063653378370033, 15251864654563933379"
-                        ));
+                        // Forward the RSA information to the leader
+                        if (leaderConnection != null) {
+                            outgoingMessages.put(
+                                    leaderConnection,
+                                    firstMessage
+                            );
+                        } else {
+                            // Parse the message from the client directly
+                            communicationHandler.parseMessage(firstMessage, clientConnection);
+                        }
                     } else {
                         newConnection.close();
                     }
@@ -211,12 +224,6 @@ public class Node implements Runnable {
                     // Remove the head. Should always be the element which was sent
                     broadcastMessages.remove();
                 }
-//
-//                try {
-//                    Thread.sleep(200);
-//                } catch (InterruptedException e) {
-//                    e.printStackTrace();
-//                }
             }
         }
 
@@ -229,6 +236,42 @@ public class Node implements Runnable {
                     break;
                 case RSA:
                     logConsole("PublicKey received: " + incomingMessage.getPayload());
+
+                    // Save the public key
+                    publicKey = (String) incomingMessage.getPayload();
+
+                    if (state == State.LEADER) {
+                        // Broadcast the public key
+                        broadcastMessages.add(incomingMessage);
+
+                        // TODO: Start distributing the work packages
+                        clientConnection = connection;
+
+                        // For now, send the primes to the client connection
+                        // clientConnection is either the Client itself, or the Node connected to the Client. The Node
+                        // will forward the received primes to the client
+                        parseMessage(createMessage(
+                                "Client",
+                                MessageType.PRIMES,
+                                "17594063653378370033, 15251864654563933379"
+                        ), clientConnection);
+                    }
+                    break;
+                case PRIMES:
+                    if (state == State.LEADER) {
+                        logConsole("Forwarding primes to the client connection!");
+                        // Forward the primes to the Node connected to the Client, which will forward the received
+                        // primes to the client
+                        clientConnection.getMessageHandler().write(createMessage(
+                                "Client",
+                                MessageType.PRIMES,
+                                incomingMessage.getPayload()
+                        ));
+                    } else if (clientConnection != null) {
+                        logConsole("Received Primes. Forwarding to client now!");
+                        // Send the primes to the client
+                        clientConnection.getMessageHandler().write(incomingMessage);
+                    }
                     break;
                 case RAFT_ELECTION:
                     logConsole("Raft Election started by " + incomingMessage.getSender());
@@ -261,23 +304,15 @@ public class Node implements Runnable {
                             logConsole("Im the boss in town");
 
                             state = State.LEADER;
+                            leaderConnection = null;
 
                             // Start the heartbeat task
-                            if (leaderHeartbeat != null) {
-                                leaderHeartbeat.cancel();
-                                leaderHeartbeat.purge();
-                            }
-
-                            leaderHeartbeat = new Timer();
-                            leaderHeartbeat.schedule(raft.createHeartbeatTask(), 50, 500);
+                            raft.initLeaderHeartbeat();
                         } else if (votesReceived == connections.size()) {
                             logConsole("I was not elected Sadge");
 
                             // Reset own state and values
-                            state = State.FOLLOWER;
-                            hasVoted = false;
-                            voteCount = 0;
-                            votesReceived = 0;
+                            resetRaftElection();
                         } else {
                             break;
                         }
@@ -341,17 +376,18 @@ public class Node implements Runnable {
                     }
                     break;
                 case STATE:
-                    logConsole("State of connection " + connection.getName() + " changed to " + incomingMessage.getPayload());
+//                    logConsole("State of connection " + connection.getName() + " changed to " + incomingMessage.getPayload());
 
                     // Grab the new state
                     State incomingState = (State) incomingMessage.getPayload();
                     connection.setState(incomingState);
 
-                    // Reset election stuff
                     if (incomingState == State.LEADER) {
-                        state = State.FOLLOWER;
-                        voteCount = 0;
-                        hasVoted = false;
+                        // Save leader connection to variable
+                        leaderConnection = connection;
+
+                        // Reset election stuff
+                        resetRaftElection();
                     }
                     break;
                 case DISCONNECT:
@@ -394,39 +430,34 @@ public class Node implements Runnable {
                 Message welcome = tempHandler.read();
                 if (welcome.getMessageType() == MessageType.WELCOME) {
 //                    logConsole("Welcome message received: " + welcome);
-                    String connectionName = welcome.getSender();
 
-                    // Get the state of the new node
-                    Message state = tempHandler.read();
-                    if (state.getMessageType() == MessageType.STATE) {
-                        // Save the connection
-                        connections.put(
-                                createConnectionKey(address, port),
-                                new Connection(address, port, connectionName, clientSocket, (State) state.getPayload())
-                        );
+                    // Save the connection
+                    connections.put(
+                            createConnectionKey(address, port),
+                            new Connection(address, port, welcome.getSender(), clientSocket)
+                    );
 
-                        // Go through every given combination of IP:Port by splitting at the comma
-                        for (String connectionInformation : ((String) welcome.getPayload()).split(",")) {
-                            if (connectionInformation.length() > 0 && !connections.containsKey(connectionInformation)) {
+                    // Go through every given combination of IP:Port by splitting at the comma
+                    for (String connectionInformation : ((String) welcome.getPayload()).split(",")) {
+                        if (connectionInformation.length() > 0 && !connections.containsKey(connectionInformation)) {
 //                            logConsole("new connection information: " + connectionInformation);
-                                String[] connection = connectionInformation.split(":");
-                                String[] ipParts = connection[0].split("\\.");
+                            String[] connection = connectionInformation.split(":");
+                            String[] ipParts = connection[0].split("\\.");
 
-                                // Connect to the new node
-                                connectTo(
-                                        // Create the InetAddress object
-                                        InetAddress.getByAddress(
-                                                new byte[]{
-                                                        (byte) Integer.parseInt(ipParts[0]),
-                                                        (byte) Integer.parseInt(ipParts[1]),
-                                                        (byte) Integer.parseInt(ipParts[2]),
-                                                        (byte) Integer.parseInt(ipParts[3]),
-                                                }
-                                        ),
-                                        // Parse the port
-                                        Integer.parseInt(connection[1])
-                                );
-                            }
+                            // Connect to the new node
+                            connectTo(
+                                    // Create the InetAddress object
+                                    InetAddress.getByAddress(
+                                            new byte[]{
+                                                    (byte) Integer.parseInt(ipParts[0]),
+                                                    (byte) Integer.parseInt(ipParts[1]),
+                                                    (byte) Integer.parseInt(ipParts[2]),
+                                                    (byte) Integer.parseInt(ipParts[3]),
+                                            }
+                                    ),
+                                    // Parse the port
+                                    Integer.parseInt(connection[1])
+                            );
                         }
                     }
                 }
@@ -434,6 +465,7 @@ public class Node implements Runnable {
                 e.printStackTrace();
             }
         }
+
     }
 
     /**
@@ -456,7 +488,7 @@ public class Node implements Runnable {
      *
      * @param log The message to log to sysout
      */
-    private void logConsole(String log) {
+    public void logConsole(String log) {
         System.out.println("[" + this.name + "]: " + log);
     }
 
@@ -528,5 +560,12 @@ public class Node implements Runnable {
         }
 
         connections.remove(connectionKey);
+    }
+
+    private void resetRaftElection() {
+        state = State.FOLLOWER;
+        voteCount = 0;
+        votesReceived = 0;
+        hasVoted = false;
     }
 }
