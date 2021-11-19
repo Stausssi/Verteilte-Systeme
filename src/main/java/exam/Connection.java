@@ -19,7 +19,7 @@ public class Connection {
     private String name;
     private final ObjectMessageHandler messageHandler;
     private State state = State.FOLLOWER;
-
+    private int workingIndex;
     protected Timer nodeTimeout;
 
     /**
@@ -120,5 +120,19 @@ public class Connection {
      */
     public void setNodeTimeout(Timer nodeTimeout) {
         this.nodeTimeout = nodeTimeout;
+    }
+
+    /**
+     * @return returns current index of calculation
+     */
+    public int getWorkingIndex() {
+        return workingIndex;
+    }
+
+    /**
+     * @param workingIndex set the current index of calculation
+     */
+    public void setWorkingIndex(int workingIndex) {
+        this.workingIndex = workingIndex;
     }
 }
