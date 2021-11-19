@@ -369,8 +369,10 @@ public class Node implements Runnable {
                             temp.schedule(new NodeTimeoutTask(connection) {
                                 @Override
                                 public void run() {
-                                    logConsole(this.node.getName() + " disconnected!");
-                                    handleNodeTimeout(this.node);
+                                    if (nodeRunning) {
+                                        logConsole(this.node.getName() + " disconnected!");
+                                        handleNodeTimeout(this.node);
+                                    }
                                 }
                             }, 2000);
 

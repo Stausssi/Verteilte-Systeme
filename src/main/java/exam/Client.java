@@ -29,6 +29,7 @@ public class Client {
             messageHandler.write(rsaInfo);
 
             // Now wait for the cluster to solve the key
+            // TODO: If socket is gone, check on any other of the given ports
             while (!cluster.isClosed()) {
                 Message incomingMessage = messageHandler.read();
                 System.out.println("Received: " + incomingMessage);
