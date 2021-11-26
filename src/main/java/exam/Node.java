@@ -3,14 +3,12 @@ package exam;
 import tasks.io.InputOutput;
 import tasks.messages.Message;
 import tasks.messages.ObjectMessageHandler;
+
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.*;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Map;
-import java.util.Timer;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
@@ -34,9 +32,10 @@ public class Node implements Runnable {
     private Connection clientConnection;
 
     //Vars for primes
-    private final String primesFile = "/primes100.txt";
+    private static final String primesFile = "/primes100.txt";
     public volatile ConcurrentHashMap<Integer, Index> primeMap = new ConcurrentHashMap<>();
     private final ArrayList<String> primeList = new ArrayList<>();
+    private static final int workSize = 8;
 
     public volatile ConcurrentHashMap<String, Connection> connections = new ConcurrentHashMap<>();
     public volatile ConcurrentHashMap<Connection, Message> outgoingMessages = new ConcurrentHashMap<>();
@@ -62,7 +61,6 @@ public class Node implements Runnable {
      *
      * @param port the port the socket server will run on
      * @param name the name of the node
-     *
      * @throws UnknownHostException if the host name is invalid
      */
     public Node(int port, String name) throws UnknownHostException {
@@ -72,8 +70,7 @@ public class Node implements Runnable {
         this.state = State.FOLLOWER;
         try {
             fillPrimesMap();
-        }
-        catch(Exception e){
+        } catch (Exception e) {
             e.printStackTrace();
         }
     }
@@ -82,8 +79,8 @@ public class Node implements Runnable {
      * Creates a new Node.
      *
      * @param address the address of the socket server
-     * @param port the port the socket server will run on
-     * @param name the name of the node
+     * @param port    the port the socket server will run on
+     * @param name    the name of the node
      */
     public Node(InetAddress address, int port, String name) {
         this.address = address;
@@ -92,8 +89,7 @@ public class Node implements Runnable {
         this.state = State.FOLLOWER;
         try {
             fillPrimesMap();
-        }
-        catch(Exception e){
+        } catch (Exception e) {
             e.printStackTrace();
         }
     }
@@ -169,7 +165,7 @@ public class Node implements Runnable {
                             ));
                         }
 
-                    // Otherwise, the new connection might be a client
+                        // Otherwise, the new connection might be a client
                     } else if (firstMessage.getMessageType() == MessageType.RSA && "Client".equalsIgnoreCase(firstMessage.getSender())) {
                         logConsole("Received RSA information from the client!");
 //                        String publicKey = (String) firstMessage.getPayload();
@@ -192,7 +188,7 @@ public class Node implements Runnable {
                             communicationHandler.parseMessage(firstMessage, clientConnection);
                         }
 
-                    // Otherwise, close the connection
+                        // Otherwise, close the connection
                     } else {
                         newConnection.close();
                     }
@@ -276,7 +272,7 @@ public class Node implements Runnable {
          * Parsed the given message by using the MessageType and acts accordingly.
          *
          * @param incomingMessage the message to parse and handle
-         * @param connection the connection the message came from
+         * @param connection      the connection the message came from
          */
         private void parseMessage(Message incomingMessage, Connection connection) {
 //            logConsole("Incoming " + incomingMessage + "\nFrom Connection: " + connection.getName());
@@ -295,8 +291,42 @@ public class Node implements Runnable {
                         // Broadcast the public key
                         broadcastMessages.add(incomingMessage);
 
-                        // TODO: Start distributing the work packages
                         clientConnection = connection;
+
+                        // Only get the indexes which are not worked on or done
+                        List<Integer> availableRanges = new ArrayList<>();
+                        for (Map.Entry<Integer, Index> entry : primeMap.entrySet()) {
+                            if (entry.getValue() == Index.OPEN) {
+                                availableRanges.add(entry.getKey());
+                            }
+                        }
+
+                        // Distribute the work packages
+                        for (Map.Entry<String, Connection> entry : connections.entrySet()) {
+                            Connection c = entry.getValue();
+
+                            // Create the range of indexes the Node should work on
+                            List<Integer> workingRange = new ArrayList<>();
+                            for (int i = 0; i < workSize; ++i) {
+                                int index = availableRanges.get(0);
+                                workingRange.add(index);
+                                primeMap.put(index, Index.WORKING);
+                                availableRanges.remove(0);
+                            }
+
+                            // Convert the range to a string
+                            String stringRange = workingRange.get(0) + "," + workingRange.get(workingRange.size() - 1);
+
+                            // Force the Node to work
+                            c.getMessageHandler().write(createMessage(
+                                    c.getName(),
+                                    MessageType.WORK,
+                                    stringRange
+                            ));
+
+                            // Inform every node of the state change
+                            addBroadcastMessage(MessageType.WORK_STATE, stringRange + ":" + Index.WORKING);
+                        }
 
                         // For now, send the primes to the client connection
                         // clientConnection is either the Client itself, or the Node connected to the Client. The Node
@@ -443,6 +473,20 @@ public class Node implements Runnable {
 
                         // Reset election stuff
                         resetRaftElection();
+                    }
+                    break;
+                case WORK:
+                    logConsole("I dont want to work but i have to in order to survive");
+                    // TODO: Create worker with index range with a callback to a function which will let the leader now this range is finished
+                    break;
+                case WORK_STATE:
+                    String[] information = ((String) incomingMessage.getPayload()).split(":");
+                    int[] range = Arrays.stream(information[0].split(",")).mapToInt(Integer::parseInt).toArray();
+                    Index newState = Index.valueOf(information[1]);
+
+                    logConsole("State of primes in range " + Arrays.toString(range) + " changed to " + newState);
+                    for (int i = range[0]; i < range[1]; ++i) {
+                        primeMap.put(i, newState);
                     }
                     break;
                 case DISCONNECT:
@@ -597,7 +641,7 @@ public class Node implements Runnable {
      * Creates a broadcast method with the given type and payload.
      *
      * @param messageType the type of the broadcast message
-     * @param payload the payload of the broadcast
+     * @param payload     the payload of the broadcast
      */
     protected void addBroadcastMessage(MessageType messageType, Object payload) {
         broadcastMessages.add(createMessage(
@@ -648,12 +692,13 @@ public class Node implements Runnable {
 
     private void fillPrimesMap() throws URISyntaxException, FileNotFoundException {
         URL defaultImage = Node.class.getResource(primesFile);
+        assert defaultImage != null;
         File imageFile = new File(defaultImage.toURI());
         String primes = InputOutput.readFile(imageFile);
         String[] primesList = primes.split(String.valueOf('\n'));
-        for(int i = 0; i < primesList.length; i++){
+        for (int i = 0; i < primesList.length; i++) {
             primeList.add(primesList[i]);
-            primeMap.put(i,Index.OPEN);
+            primeMap.put(i, Index.OPEN);
         }
     }
 

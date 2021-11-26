@@ -1,5 +1,7 @@
 package exam;
 
 public enum Index {
-    OPEN, WORKING, CLOSED;
+    OPEN,
+    WORKING,
+    CLOSED;
 }

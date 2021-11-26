@@ -33,6 +33,12 @@ public enum MessageType {
     // A message of the type RSA contains the public key information from the Client
     RSA("rsa"),
 
+    // A message of the type WORK contains an index range for the node to work on
+    WORK("work"),
+
+    // A message of the type WORK_STATE notifies every node of the state change of the given index range
+    WORK_STATE("work_state"),
+
     // A message of the type PRIMES contains p and q needed for the RSA decryption
     PRIMES("primes");
 
