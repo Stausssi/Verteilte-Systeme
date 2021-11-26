@@ -7,6 +7,7 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.*;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Timer;
@@ -35,6 +36,7 @@ public class Node implements Runnable {
     //Vars for primes
     private final String primesFile = "/primes100.txt";
     public volatile ConcurrentHashMap<Integer, Index> primeMap = new ConcurrentHashMap<>();
+    private final ArrayList<String> primeList = new ArrayList<>();
 
     public volatile ConcurrentHashMap<String, Connection> connections = new ConcurrentHashMap<>();
     public volatile ConcurrentHashMap<Connection, Message> outgoingMessages = new ConcurrentHashMap<>();
@@ -650,9 +652,9 @@ public class Node implements Runnable {
         String primes = InputOutput.readFile(imageFile);
         String[] primesList = primes.split(String.valueOf('\n'));
         for(int i = 0; i < primesList.length; i++){
+            primeList.add(primesList[i]);
             primeMap.put(i,Index.OPEN);
         }
-        System.out.println("Length: " + primeMap.size());
     }
 
 
