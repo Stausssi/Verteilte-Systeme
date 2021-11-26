@@ -136,26 +136,7 @@ public class Node implements Runnable {
 
                         if (connectionName != null && port > 0) {
                             // Send the node a serialized version of IP:Port combinations in the connections object
-                            // Add each connection key IP:Port to a string, separated by ,
-                            StringBuilder connectionsBuilder = new StringBuilder();
-                            for (String key : Collections.list(connections.keys())) {
-                                if (key.contains(":")) {
-                                    connectionsBuilder.append(key);
-                                    connectionsBuilder.append(",");
-                                }
-                            }
-
-                            // Remove the trailing comma
-                            if (connectionsBuilder.length() > 0) {
-                                connectionsBuilder.deleteCharAt(connectionsBuilder.lastIndexOf(","));
-                            }
-
-//                            logConsole("Cluster Keys: " + connectionsBuilder);
-                            tempHandler.write(createMessage(
-                                    connectionName,
-                                    MessageType.WELCOME,
-                                    connectionsBuilder.toString()
-                            ));
+                            tempHandler.write(createWelcomeMessage(connectionName));
 
                             // Add newConnection to the HashMap
                             connections.put(
@@ -176,6 +157,9 @@ public class Node implements Runnable {
                         logConsole("Received RSA information from the client!");
 //                        String publicKey = (String) firstMessage.getPayload();
 //                        logConsole("Public Key: " + publicKey);
+
+                        // Send the client a serialized version of IP:Port combinations in the connections object
+                        tempHandler.write(createWelcomeMessage("Client"));
 
                         // Save the client connection
                         clientConnection = new Connection(newConnection.getInetAddress(), -1, "Client", newConnection);
@@ -199,6 +183,28 @@ public class Node implements Runnable {
             } catch (IOException e) {
                 e.printStackTrace();
             }
+        }
+
+        private Message createWelcomeMessage(String connectionName) {
+            // Add each connection key IP:Port to a string, separated by ,
+            StringBuilder connectionsBuilder = new StringBuilder();
+            for (String key : Collections.list(connections.keys())) {
+                if (key.contains(":")) {
+                    connectionsBuilder.append(key);
+                    connectionsBuilder.append(",");
+                }
+            }
+
+            // Remove the trailing comma
+            if (connectionsBuilder.length() > 0) {
+                connectionsBuilder.deleteCharAt(connectionsBuilder.lastIndexOf(","));
+            }
+
+            return createMessage(
+                    connectionName,
+                    MessageType.WELCOME,
+                    connectionsBuilder.toString()
+            );
         }
     }
 
