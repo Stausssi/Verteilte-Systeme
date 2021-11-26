@@ -1,5 +1,6 @@
 package exam;
 
+import tasks.messages.Message;
 import tasks.messages.ObjectMessageHandler;
 
 import java.net.InetAddress;

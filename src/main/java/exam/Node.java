@@ -310,7 +310,6 @@ public class Node implements Runnable {
                             for (int i = 0; i < workSize; ++i) {
                                 int index = availableRanges.get(0);
                                 workingRange.add(index);
-                                primeMap.put(index, Index.WORKING);
                                 availableRanges.remove(0);
                             }
 
@@ -318,14 +317,12 @@ public class Node implements Runnable {
                             String stringRange = workingRange.get(0) + "," + workingRange.get(workingRange.size() - 1);
 
                             // Force the Node to work
-                            c.getMessageHandler().write(createMessage(
-                                    c.getName(),
-                                    MessageType.WORK,
-                                    stringRange
-                            ));
-
-                            // Inform every node of the state change
-                            addBroadcastMessage(MessageType.WORK_STATE, stringRange + ":" + Index.WORKING);
+                            outgoingMessages.put(
+                                    c, createMessage(
+                                            c.getName(),
+                                            MessageType.WORK,
+                                            stringRange
+                                    ));
                         }
 
                         // For now, send the primes to the client connection
@@ -476,17 +473,36 @@ public class Node implements Runnable {
                     }
                     break;
                 case WORK:
-                    logConsole("I dont want to work but i have to in order to survive");
+                    logConsole("I dont want to work but i have to in order to survive:");
+
+                    // Tell the leader this Node will work on the range, if there is no other task running
+                    boolean taskRunning = true;
+                    if (taskRunning) {
+                        outgoingMessages.put(
+                                leaderConnection, createMessage(
+                                        leaderConnection.getName(),
+                                        MessageType.WORK_STATE,
+                                        incomingMessage.getPayload() + ":" + Index.WORKING
+                                )
+                        );
+                    }
                     // TODO: Create worker with index range with a callback to a function which will let the leader now this range is finished
                     break;
                 case WORK_STATE:
+                    // Get the range and new State
                     String[] information = ((String) incomingMessage.getPayload()).split(":");
                     int[] range = Arrays.stream(information[0].split(",")).mapToInt(Integer::parseInt).toArray();
                     Index newState = Index.valueOf(information[1]);
 
                     logConsole("State of primes in range " + Arrays.toString(range) + " changed to " + newState);
+                    // Change the states of the indexes
                     for (int i = range[0]; i < range[1]; ++i) {
                         primeMap.put(i, newState);
+                    }
+
+                    if (state == State.LEADER) {
+                        // Inform every node of the state change
+                        addBroadcastMessage(MessageType.WORK_STATE, incomingMessage.getPayload());
                     }
                     break;
                 case DISCONNECT:
