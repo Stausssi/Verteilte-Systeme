@@ -1,13 +1,12 @@
 package exam;
 
+import tasks.io.InputOutput;
 import tasks.messages.Message;
 import tasks.messages.ObjectMessageHandler;
-
+import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.net.InetAddress;
-import java.net.ServerSocket;
-import java.net.Socket;
-import java.net.UnknownHostException;
+import java.net.*;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Timer;
@@ -32,6 +31,10 @@ public class Node implements Runnable {
 
     private Connection leaderConnection;
     private Connection clientConnection;
+
+    //Vars for primes
+    private final String primesFile = "/primes100.txt";
+    public volatile ConcurrentHashMap<Integer, Index> primeMap = new ConcurrentHashMap<>();
 
     public volatile ConcurrentHashMap<String, Connection> connections = new ConcurrentHashMap<>();
     public volatile ConcurrentHashMap<Connection, Message> outgoingMessages = new ConcurrentHashMap<>();
@@ -65,6 +68,12 @@ public class Node implements Runnable {
         this.port = port;
         this.name = name;
         this.state = State.FOLLOWER;
+        try {
+            fillPrimesMap();
+        }
+        catch(Exception e){
+            e.printStackTrace();
+        }
     }
 
     /**
@@ -79,6 +88,12 @@ public class Node implements Runnable {
         this.port = port;
         this.name = name;
         this.state = State.FOLLOWER;
+        try {
+            fillPrimesMap();
+        }
+        catch(Exception e){
+            e.printStackTrace();
+        }
     }
 
     @Override
@@ -621,4 +636,18 @@ public class Node implements Runnable {
             leaderTimeout.purge();
         }
     }
+
+
+    private void fillPrimesMap() throws URISyntaxException, FileNotFoundException {
+        URL defaultImage = Node.class.getResource(primesFile);
+        File imageFile = new File(defaultImage.toURI());
+        String primes = InputOutput.readFile(imageFile);
+        String[] primesList = primes.split(String.valueOf('\n'));
+        for(int i = 0; i < primesList.length; i++){
+            primeMap.put(i,Index.OPEN);
+        }
+        System.out.println("Length: " + primeMap.size());
+    }
+
+
 }
