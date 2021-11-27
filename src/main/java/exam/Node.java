@@ -22,6 +22,7 @@ public class Node implements Runnable {
     private static final int MAX_INCOMING_CLIENTS = 100;
 
     private boolean nodeRunning = true;
+    private boolean distributeWork = true;
 
     private final InetAddress address;
     private final int port;
@@ -49,7 +50,8 @@ public class Node implements Runnable {
     private Timer leaderTimeout;
 
     // RSA Stuff
-    private String publicKey;
+    private String publicKey = "";
+    private PrimeWorker primeWorker;
 
     // Create threads for socket server and client
     protected final SocketServer socketServer = new SocketServer();
@@ -317,26 +319,26 @@ public class Node implements Runnable {
                             String stringRange = workingRange.get(0) + "," + workingRange.get(workingRange.size() - 1);
 
                             // Force the Node to work
-                            outgoingMessages.put(
-                                    c, createMessage(
-                                            c.getName(),
-                                            MessageType.WORK,
-                                            stringRange
-                                    ));
+                            outgoingMessages.put(c, createMessage(
+                                    c.getName(),
+                                    MessageType.WORK,
+                                    stringRange
+                            ));
                         }
 
                         // For now, send the primes to the client connection
                         // clientConnection is either the Client itself, or the Node connected to the Client. The Node
                         // will forward the received primes to the client
-                        parseMessage(createMessage(
-                                "Client",
-                                MessageType.PRIMES,
-                                "17594063653378370033, 15251864654563933379"
-                        ), clientConnection);
+//                        parseMessage(createMessage(
+//                                "Client",
+//                                MessageType.PRIMES,
+//                                "17594063653378370033, 15251864654563933379"
+//                        ), clientConnection);
                     }
                     break;
                 case PRIMES:
                     if (state == State.LEADER) {
+                        distributeWork = false;
                         logConsole("Forwarding primes to the client connection!");
                         // Forward the primes to the Node connected to the Client, which will forward the received
                         // primes to the client
@@ -476,8 +478,7 @@ public class Node implements Runnable {
                     logConsole("I dont want to work but i have to in order to survive:");
 
                     // Tell the leader this Node will work on the range, if there is no other task running
-                    boolean taskRunning = true;
-                    if (taskRunning) {
+                    if (primeWorker == null && publicKey.length() > 0) {
                         outgoingMessages.put(
                                 leaderConnection, createMessage(
                                         leaderConnection.getName(),
@@ -485,16 +486,55 @@ public class Node implements Runnable {
                                         incomingMessage.getPayload() + ":" + Index.WORKING
                                 )
                         );
+
+                        primeWorker = new PrimeWorker(
+                                (String) incomingMessage.getPayload(),
+                                publicKey,
+                                primeList,
+                                new WorkerCallback() {
+                                    @Override
+                                    public void resultFound(String p, String q) {
+                                        logConsole("Worker found the result!");
+                                        // Notify the leader of the result
+                                        outgoingMessages.put(
+                                                leaderConnection,
+                                                createMessage(
+                                                        leaderConnection.getName(),
+                                                        MessageType.PRIMES,
+                                                        p + "," + q
+                                                )
+                                        );
+                                    }
+
+                                    @Override
+                                    public void workerFinished(String range) {
+                                        logConsole("Worker has finished!");
+                                        primeWorker = null;
+
+                                        // Tell the leader this range is finished
+                                        outgoingMessages.put(
+                                                leaderConnection,
+                                                createMessage(
+                                                        leaderConnection.getName(),
+                                                        MessageType.WORK_STATE,
+                                                        range + ":" + Index.CLOSED
+                                                )
+                                        );
+                                    }
+                                }
+                        );
+
+                        new Thread(primeWorker).start();
                     }
-                    // TODO: Create worker with index range with a callback to a function which will let the leader now this range is finished
                     break;
                 case WORK_STATE:
                     // Get the range and new State
                     String[] information = ((String) incomingMessage.getPayload()).split(":");
-                    int[] range = Arrays.stream(information[0].split(",")).mapToInt(Integer::parseInt).toArray();
+                    int[] range = Arrays.stream(information[0].trim().split(",")).mapToInt(Integer::parseInt).toArray();
                     Index newState = Index.valueOf(information[1]);
 
                     logConsole("State of primes in range " + Arrays.toString(range) + " changed to " + newState);
+
                     // Change the states of the indexes
                     for (int i = range[0]; i < range[1]; ++i) {
                         primeMap.put(i, newState);
@@ -503,6 +543,22 @@ public class Node implements Runnable {
                     if (state == State.LEADER) {
                         // Inform every node of the state change
                         addBroadcastMessage(MessageType.WORK_STATE, incomingMessage.getPayload());
+
+                        // Send the node a new work package if the state is CLOSED
+                        if (newState == Index.CLOSED && distributeWork) {
+                            int startIndex = range[1];
+                            while (primeMap.get(startIndex) != Index.OPEN) ++startIndex;
+
+                            // Convert the range to a string
+                            String stringRange = startIndex + "," + (startIndex + workSize - 1);
+
+                            // Force the Node to work
+                            outgoingMessages.put(connection, createMessage(
+                                    connection.getName(),
+                                    MessageType.WORK,
+                                    stringRange
+                            ));
+                        }
                     }
                     break;
                 case DISCONNECT:
