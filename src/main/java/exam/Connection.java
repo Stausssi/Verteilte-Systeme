@@ -20,7 +20,7 @@ public class Connection {
     private final ObjectMessageHandler messageHandler;
     private State state = State.FOLLOWER;
     private boolean isWorking = false;
-    private int workResponseCooldown = 0;
+    private boolean shouldBeWorking = false;
     protected Timer nodeTimeout;
 
     /**
@@ -137,15 +137,11 @@ public class Connection {
         this.isWorking = isWorking;
     }
 
-    public int getWorkResponseCooldown() {
-        return workResponseCooldown;
+    public boolean shouldBeWorking() {
+        return shouldBeWorking;
     }
 
-    public void setWorkResponseCooldown(int workResponseCooldown) {
-        this.workResponseCooldown = workResponseCooldown;
-    }
-
-    public void decreaseWorkResponseCooldown() {
-        this.workResponseCooldown--;
+    public void setShouldBeWorking(boolean shouldBeWorking) {
+        this.shouldBeWorking = shouldBeWorking;
     }
 }

@@ -39,7 +39,7 @@ public class Node implements Runnable {
     private static final int workSize = 8;
 
     public volatile ConcurrentHashMap<String, Connection> connections = new ConcurrentHashMap<>();
-    public volatile ConcurrentHashMap<Connection, Message> outgoingMessages = new ConcurrentHashMap<>();
+    public volatile ConcurrentHashMap<Connection, ConcurrentLinkedQueue<Message>> outgoingMessages = new ConcurrentHashMap<>();
     public volatile ConcurrentLinkedQueue<Message> broadcastMessages = new ConcurrentLinkedQueue<>();
 
     // Raft stuff
@@ -181,10 +181,7 @@ public class Node implements Runnable {
 
                         // Forward the RSA information to the leader
                         if (leaderConnection != null) {
-                            outgoingMessages.put(
-                                    leaderConnection,
-                                    firstMessage
-                            );
+                            addOutgoingMessage(leaderConnection, firstMessage);
                         } else {
                             // Parse the message from the client directly
                             communicationHandler.parseMessage(firstMessage, clientConnection);
@@ -234,6 +231,18 @@ public class Node implements Runnable {
             logConsole("The CommunicationHandler was started");
 
             while (nodeRunning) {
+                // Go through every broadcast message
+                for (Message broadcast : broadcastMessages) {
+                    for (Connection c : connections.values()) {
+                        addOutgoingMessage(c, broadcast);
+
+//                        logConsole("Sent broadcast " + b + " to " + c.getName() + " (" + c.getSocket() + ")");
+                    }
+
+                    // Remove the head. Should always be the element which was sent
+                    broadcastMessages.remove();
+                }
+
                 // Iterate over every connection
                 for (Map.Entry<String, Connection> entry : connections.entrySet()) {
                     // Get the connection object and the message handler
@@ -251,31 +260,17 @@ public class Node implements Runnable {
                     }
 
                     // Check whether the node is working
-                    if (state == State.LEADER && !c.isWorking() && distributeWork) {
-                        if (c.getWorkResponseCooldown() == 0) {
-                            distributeWork(c);
-                        } else {
-                            c.decreaseWorkResponseCooldown();
-                        }
+                    if (state == State.LEADER && !c.isWorking() && !c.shouldBeWorking() && distributeWork) {
+                        distributeWork(c);
                     }
 
                     // Send the messages which are only directed at the connection
                     if (outgoingMessages.containsKey(c)) {
-                        messageHandler.write(outgoingMessages.get(c));
-                        outgoingMessages.remove(c);
+                        for (Message msg : outgoingMessages.get(c)) {
+                            messageHandler.write(msg);
+                            outgoingMessages.get(c).remove();
+                        }
                     }
-                }
-
-                // Go through every broadcast message
-                for (Message broadcast : broadcastMessages) {
-                    for (Connection c : connections.values()) {
-                        c.getMessageHandler().write(broadcast);
-
-//                        logConsole("Sent broadcast " + b + " to " + c.getName() + " (" + c.getSocket() + ")");
-                    }
-
-                    // Remove the head. Should always be the element which was sent
-                    broadcastMessages.remove();
                 }
             }
             logConsole("ded wtf");
@@ -321,16 +316,14 @@ public class Node implements Runnable {
                             );
                         }
 
-                        distributeWork = true;
-
-                        // Distribute the work packages after a second
+                        // Distribute the work packages after a second to ensure that the public key has arrived
                         Timer distributeTimer = new Timer();
                         distributeTimer.schedule(new TimerTask() {
                             @Override
                             public void run() {
                                 distributeWork = true;
                             }
-                        }, 1);
+                        }, 1000);
 
                         // For now, send the primes to the client connection
                         // clientConnection is either the Client itself, or the Node connected to the Client. The Node
@@ -358,7 +351,7 @@ public class Node implements Runnable {
                         if (clientConnection.getPort() == -1) {
                             clientConnection.getMessageHandler().write(primeMessage);
                         } else {
-                            outgoingMessages.put(clientConnection, primeMessage);
+                            addOutgoingMessage(clientConnection, primeMessage);
                         }
 
                         // TODO: notify everyone that we are finished
@@ -376,7 +369,7 @@ public class Node implements Runnable {
                     // Reply to the candidate with whether we already voted.
                     // Already voted -> false
                     // Not voted -> true
-                    outgoingMessages.put(connection, createMessage(
+                    addOutgoingMessage(connection, createMessage(
                             incomingMessage.getSender(),
                             MessageType.RAFT_VOTE,
                             !hasVoted
@@ -427,7 +420,7 @@ public class Node implements Runnable {
                     }
                     break;
                 case RAFT_HEARTBEAT:
-//                    logConsole("Heartbeat received by " + incomingMessage.getSender() + ":\n" + incomingMessage);
+//                    logConsole("Heartbeat received by " + incomingMessage.getSender());
                     if (state == State.LEADER) {
                         if (incomingMessage.getPayload() == State.FOLLOWER) {
                             // Reset timer for node disconnection
@@ -453,7 +446,7 @@ public class Node implements Runnable {
                         }
                     } else {
                         if (incomingMessage.getPayload() == State.LEADER) {
-                            logConsole("Received leader heartbeat!");
+//                            logConsole("Received leader heartbeat!");
                             // Reset timer for reelection
                             if (leaderTimeout != null) {
                                 leaderTimeout.cancel();
@@ -467,19 +460,18 @@ public class Node implements Runnable {
                                     logConsole("The leader has died!");
                                     handleNodeTimeout(this.node);
                                 }
-                            }, 5000);
+                            }, 2000);
 
                             // Send heartbeat back
-                            outgoingMessages.put(connection, createMessage(
-                                    incomingMessage.getSender(),
-                                    MessageType.RAFT_HEARTBEAT,
-                                    state
-                            ));
+                            addOutgoingMessage(
+                                    connection, createMessage(
+                                            incomingMessage.getSender(),
+                                            MessageType.RAFT_HEARTBEAT,
+                                            state
+                                    )
+                            );
 
 //                            logConsole("Leader is still alive!");
-                        } else {
-                            logConsole("wtf is this payload ma dude");
-                            logConsole(incomingMessage.toString());
                         }
                     }
                     break;
@@ -499,17 +491,15 @@ public class Node implements Runnable {
                     }
                     break;
                 case WORK:
-                    logConsole("I dont want to work but i have to in order to survive:");
+//                    logConsole("I dont want to work but i have to in order to survive:");
 
                     // Tell the leader this Node will work on the range, if there is no other task running
                     if (primeWorker == null && publicKey.length() > 0) {
-                        outgoingMessages.put(
-                                leaderConnection, createMessage(
-                                        leaderConnection.getName(),
-                                        MessageType.WORK_STATE,
-                                        incomingMessage.getPayload() + ":" + Index.WORKING
-                                )
-                        );
+                        addOutgoingMessage(leaderConnection, createMessage(
+                                leaderConnection.getName(),
+                                MessageType.WORK_STATE,
+                                incomingMessage.getPayload() + ":" + Index.WORKING
+                        ));
 
                         primeWorker = new PrimeWorker(
                                 (String) incomingMessage.getPayload(),
@@ -519,31 +509,25 @@ public class Node implements Runnable {
                                     @Override
                                     public void resultFound(String p, String q) {
                                         logConsole("Worker found the result!");
+
                                         // Notify the leader of the result
-                                        outgoingMessages.put(
-                                                leaderConnection,
-                                                createMessage(
-                                                        leaderConnection.getName(),
-                                                        MessageType.PRIMES,
-                                                        p + "," + q
-                                                )
-                                        );
+                                        addOutgoingMessage(leaderConnection, createMessage(
+                                                leaderConnection.getName(),
+                                                MessageType.PRIMES,
+                                                p + "," + q
+                                        ));
                                     }
 
                                     @Override
                                     public void workerFinished(String range) {
-                                        logConsole("Worker has finished!");
                                         primeWorker = null;
 
                                         // Tell the leader this range is finished
-                                        outgoingMessages.put(
-                                                leaderConnection,
-                                                createMessage(
-                                                        leaderConnection.getName(),
-                                                        MessageType.WORK_STATE,
-                                                        range + ":" + Index.CLOSED
-                                                )
-                                        );
+                                        addOutgoingMessage(leaderConnection, createMessage(
+                                                leaderConnection.getName(),
+                                                MessageType.WORK_STATE,
+                                                range + ":" + Index.CLOSED
+                                        ));
                                     }
                                 }
                         );
@@ -557,7 +541,7 @@ public class Node implements Runnable {
                     int[] range = Arrays.stream(information[0].trim().split(",")).mapToInt(Integer::parseInt).toArray();
                     Index newState = Index.valueOf(information[1]);
 
-                    logConsole("State of primes in range " + Arrays.toString(range) + " changed to " + newState);
+//                    logConsole("State of primes in range " + Arrays.toString(range) + " changed to " + newState);
 
                     // Change the states of the indexes
                     for (int i = range[0]; i < range[1]; ++i) {
@@ -569,7 +553,7 @@ public class Node implements Runnable {
                         addBroadcastMessage(MessageType.WORK_STATE, incomingMessage.getPayload());
 
                         connection.setIsWorking(newState == Index.WORKING);
-                        logConsole(connection + " has just finished something hehe boi");
+//                        logConsole(connection + " has just finished something hehe boi");
                     }
                     break;
                 case CLIENT_CONNECTION:
@@ -583,6 +567,7 @@ public class Node implements Runnable {
 
                     // Abort, if there is no one other than me
                     if (connections.size() < 2) {
+                        logConsole("Im alone here");
                         nodeRunning = false;
                     }
                     break;
@@ -607,12 +592,16 @@ public class Node implements Runnable {
 
             int finalIndex = index;
             Timer workTimeout = new Timer();
-            TimerTask workTimeoutTask = new TimerTask() {
+            TimerTask workTimeoutTask = new NodeTimeoutTask(connection) {
                 @Override
                 public void run() {
-                    for (int i = finalIndex; i < finalIndex + actualWorkSize; ++i) {
-                        if (primeMap.get(i) == Index.TENTATIVE) {
-                            primeMap.put(i, Index.OPEN);
+                    if (!this.node.isWorking()) {
+                        this.node.setShouldBeWorking(false);
+
+                        for (int i = finalIndex; i < finalIndex + actualWorkSize; ++i) {
+                            if (primeMap.get(i) == Index.TENTATIVE) {
+                                primeMap.put(i, Index.OPEN);
+                            }
                         }
                     }
                 }
@@ -623,16 +612,15 @@ public class Node implements Runnable {
             String stringRange = index + "," + (index + actualWorkSize - 1);
 
             // Force the Node to work
-            outgoingMessages.put(
-                    connection, createMessage(
-                            connection.getName(),
-                            MessageType.WORK,
-                            stringRange
-                    )
-            );
-        }
+            addOutgoingMessage(connection, createMessage(
+                    connection.getName(),
+                    MessageType.WORK,
+                    stringRange
+            ));
 
-        connection.setWorkResponseCooldown(15000);
+            connection.setShouldBeWorking(true);
+            logConsole("Distributed work to " + connection.getName());
+        }
     }
 
     /**
@@ -784,6 +772,19 @@ public class Node implements Runnable {
                 messageType,
                 payload
         ));
+    }
+
+    protected synchronized void addOutgoingMessage(Connection receiver, Message message) {
+        ConcurrentLinkedQueue<Message> messages = outgoingMessages.get(receiver);
+        if (messages == null) {
+            messages = new ConcurrentLinkedQueue<>();
+
+            outgoingMessages.put(
+                    receiver, messages
+            );
+        }
+
+        outgoingMessages.get(receiver).add(message);
     }
 
     /**
