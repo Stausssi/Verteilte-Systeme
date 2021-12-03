@@ -1,6 +1,5 @@
 package exam;
 
-import tasks.messages.Message;
 import tasks.messages.ObjectMessageHandler;
 
 import java.net.InetAddress;
@@ -20,7 +19,8 @@ public class Connection {
     private String name;
     private final ObjectMessageHandler messageHandler;
     private State state = State.FOLLOWER;
-    private int workingIndex;
+    private boolean isWorking = false;
+    private int workResponseCooldown = 0;
     protected Timer nodeTimeout;
 
     /**
@@ -124,16 +124,28 @@ public class Connection {
     }
 
     /**
-     * @return returns current index of calculation
+     * @return returns whether the node is currently working
      */
-    public int getWorkingIndex() {
-        return workingIndex;
+    public boolean isWorking() {
+        return isWorking;
     }
 
     /**
-     * @param workingIndex set the current index of calculation
+     * @param isWorking true, if the node is working
      */
-    public void setWorkingIndex(int workingIndex) {
-        this.workingIndex = workingIndex;
+    public void setIsWorking(boolean isWorking) {
+        this.isWorking = isWorking;
+    }
+
+    public int getWorkResponseCooldown() {
+        return workResponseCooldown;
+    }
+
+    public void setWorkResponseCooldown(int workResponseCooldown) {
+        this.workResponseCooldown = workResponseCooldown;
+    }
+
+    public void decreaseWorkResponseCooldown() {
+        this.workResponseCooldown--;
     }
 }

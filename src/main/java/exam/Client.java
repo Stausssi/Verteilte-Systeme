@@ -53,6 +53,7 @@ public class Client {
 
                 // Read welcome message
                 Message welcome = messageHandler.read();
+                System.out.println("Connected to the cluster!");
                 if (welcome.getMessageType() == MessageType.WELCOME) {
                     for (String connectionInformation : ((String) welcome.getPayload()).split(",")) {
                         if (connectionInformation.length() > 0) {
@@ -76,12 +77,12 @@ public class Client {
                     }
                 }
 
-//            System.out.println("Received the connections " + otherConnections + " from the Cluster.");
+                System.out.println("Received the connections " + otherConnections + " from the Cluster.");
 
                 // Now wait for the cluster to solve the key
                 while (!cluster.isClosed()) {
                     Message incomingMessage = messageHandler.read();
-//                    System.out.println("Received: " + incomingMessage);
+                    System.out.println("Received: " + incomingMessage);
 
                     if (incomingMessage.getMessageType() == MessageType.PRIMES) {
                         String[] primes = ((String) incomingMessage.getPayload()).replace(" ", "").split(",");

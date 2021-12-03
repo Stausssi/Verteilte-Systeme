@@ -14,6 +14,9 @@ public enum MessageType {
     // A message of the type STATE contains the current state of the Node
     STATE("state"),
 
+    // A message of the type CLIENT_CONNECTION notifies every node to which node the client is connected to
+    CLIENT_CONNECTION("client"),
+
     // A message of the type DISCONNECT notifies every node of a disconnect
     DISCONNECT("disconnect"),
 

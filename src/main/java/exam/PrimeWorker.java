@@ -28,7 +28,10 @@ public class PrimeWorker implements Runnable {
 
     @Override
     public void run() {
+        // Convert string range to array
         int[] rangeArray = Arrays.stream(range.trim().split(",")).mapToInt(Integer::parseInt).toArray();
+
+        // Loop over every prime in the array and combine it with every prime greater than that
         for (int i = rangeArray[0]; i < rangeArray[1]; ++i) {
             String p = primes[i];
             for (String q : primes) {
