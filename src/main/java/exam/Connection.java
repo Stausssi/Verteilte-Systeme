@@ -22,6 +22,7 @@ public class Connection {
     private boolean isWorking = false;
     private boolean shouldBeWorking = false;
     protected Timer nodeTimeout;
+    protected Timer workTimeout;
 
     /**
      * Creates a new Connection object.
@@ -143,5 +144,13 @@ public class Connection {
 
     public void setShouldBeWorking(boolean shouldBeWorking) {
         this.shouldBeWorking = shouldBeWorking;
+    }
+
+    public Timer getWorkTimeout() {
+        return workTimeout;
+    }
+
+    public void setWorkTimeout(Timer workTimeout) {
+        this.workTimeout = workTimeout;
     }
 }

@@ -32,7 +32,7 @@ public class PrimeWorker implements Runnable {
         int[] rangeArray = Arrays.stream(range.trim().split(",")).mapToInt(Integer::parseInt).toArray();
 
         // Loop over every prime in the array and combine it with every prime greater than that
-        for (int i = rangeArray[0]; i < rangeArray[1]; ++i) {
+        for (int i = rangeArray[0]; i <= rangeArray[1]; ++i) {
             String p = primes[i];
             for (String q : primes) {
 //                System.out.println("Combining " + p + " with " + q);

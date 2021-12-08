@@ -92,4 +92,16 @@ class Raft implements Runnable {
             }
         }, 50, 500);
     }
+
+    public void stop() {
+        if (leaderHeartbeat != null) {
+            leaderHeartbeat.cancel();
+            leaderHeartbeat.purge();
+        }
+
+        electionTimeout.cancel();
+        electionTimeout.purge();
+
+        raftNode.logConsole("Raft is stopped!");
+    }
 }

@@ -36,7 +36,7 @@ public class Node implements Runnable {
     private static final String primesFile = "/primes100.txt";
     public volatile ConcurrentHashMap<Integer, Index> primeMap = new ConcurrentHashMap<>();
     private final ArrayList<String> primeList = new ArrayList<>();
-    private static final int workSize = 8;
+    private static final int workSize = 10;
 
     public volatile ConcurrentHashMap<String, Connection> connections = new ConcurrentHashMap<>();
     public volatile ConcurrentHashMap<Connection, ConcurrentLinkedQueue<Message>> outgoingMessages = new ConcurrentHashMap<>();
@@ -73,7 +73,7 @@ public class Node implements Runnable {
         try {
             fillPrimesMap();
         } catch (Exception e) {
-            e.printStackTrace();
+            logConsole(e, "filling primes map");
         }
     }
 
@@ -92,7 +92,7 @@ public class Node implements Runnable {
         try {
             fillPrimesMap();
         } catch (Exception e) {
-            e.printStackTrace();
+            logConsole(e, "filling primes map");
         }
     }
 
@@ -112,7 +112,7 @@ public class Node implements Runnable {
             communicatorThread.join();
             raftThread.join();
         } catch (InterruptedException e) {
-            e.printStackTrace();
+            logConsole(e, "waiting for threads to finish");
         }
     }
 
@@ -121,16 +121,22 @@ public class Node implements Runnable {
      * This class will accept incoming connections and save them to a Connection class, which will be later used for
      * communication.
      */
-    protected class SocketServer implements Runnable {
+    private class SocketServer implements Runnable {
+        private ServerSocket serverSocket;
+
         @Override
         public void run() {
             // Open the ServerSocket
             try {
-                ServerSocket serverSocket = new ServerSocket(
-                        port,
-                        MAX_INCOMING_CLIENTS,
-                        address
-                );
+                try {
+                    this.serverSocket = new ServerSocket(
+                            port,
+                            MAX_INCOMING_CLIENTS,
+                            address
+                    );
+                } catch (IOException e) {
+                    logConsole(e, "starting the SocketServer");
+                }
 
                 logConsole("Started server socket on: " + serverSocket);
 
@@ -192,10 +198,12 @@ public class Node implements Runnable {
                         newConnection.close();
                     }
                 }
-                logConsole("Im out wtf");
             } catch (IOException e) {
-                e.printStackTrace();
+                if (!(e instanceof SocketException)) {
+                    logConsole(e, "handling connections in the SocketServer");
+                }
             }
+            logConsole("SocketServer is gone");
         }
 
         private Message createWelcomeMessage(String connectionName) {
@@ -230,7 +238,7 @@ public class Node implements Runnable {
         public void run() {
             logConsole("The CommunicationHandler was started");
 
-            while (nodeRunning) {
+            while (nodeRunning || !broadcastMessages.isEmpty()) {
                 // Go through every broadcast message
                 for (Message broadcast : broadcastMessages) {
                     for (Connection c : connections.values()) {
@@ -256,7 +264,7 @@ public class Node implements Runnable {
                             parseMessage(messageHandler.read(), c);
                         }
                     } catch (IOException e) {
-                        e.printStackTrace();
+                        logConsole(e, "checking for available messages");
                     }
 
                     // Check whether the node is working
@@ -273,7 +281,7 @@ public class Node implements Runnable {
                     }
                 }
             }
-            logConsole("ded wtf");
+            logConsole("CommunicationHandler is gone");
         }
 
         /**
@@ -324,15 +332,6 @@ public class Node implements Runnable {
                                 distributeWork = true;
                             }
                         }, 1000);
-
-                        // For now, send the primes to the client connection
-                        // clientConnection is either the Client itself, or the Node connected to the Client. The Node
-                        // will forward the received primes to the client
-//                        parseMessage(createMessage(
-//                                "Client",
-//                                MessageType.PRIMES,
-//                                "17594063653378370033, 15251864654563933379"
-//                        ), clientConnection);
                     }
                     break;
                 case PRIMES:
@@ -348,13 +347,18 @@ public class Node implements Runnable {
                                 incomingMessage.getPayload()
                         );
 
+                        // Check whether the client is connected to the leader
                         if (clientConnection.getPort() == -1) {
                             clientConnection.getMessageHandler().write(primeMessage);
                         } else {
                             addOutgoingMessage(clientConnection, primeMessage);
                         }
 
-                        // TODO: notify everyone that we are finished
+                        // Let everyone know that we are finished
+                        addBroadcastMessage(MessageType.FINISHED, "");
+
+                        // Also stop this node
+                        stopNode();
                     } else if (clientConnection != null) {
                         logConsole("Received Primes. Forwarding to client now!");
                         incomingMessage.setSender(name);
@@ -364,7 +368,7 @@ public class Node implements Runnable {
                     }
                     break;
                 case RAFT_ELECTION:
-                    logConsole("Raft Election started by " + incomingMessage.getSender());
+//                    logConsole("Raft Election started by " + incomingMessage.getSender());
 
                     // Reply to the candidate with whether we already voted.
                     // Already voted -> false
@@ -379,10 +383,7 @@ public class Node implements Runnable {
                     connection.setState(State.CANDIDATE);
 
                     if (!hasVoted) {
-                        logConsole(incomingMessage.getSender() + " has my vote!");
                         hasVoted = true;
-                    } else {
-                        logConsole(incomingMessage.getSender() + " does not have my vote!");
                     }
                     break;
                 case RAFT_VOTE:
@@ -404,7 +405,7 @@ public class Node implements Runnable {
                             // Start the heartbeat task
                             raft.initLeaderHeartbeat();
                         } else if (votesReceived == connections.size()) {
-                            logConsole("I was not elected Sadge");
+//                            logConsole("I was not elected Sadge");
 
                             // Reset own state and values
                             resetRaftElection();
@@ -413,10 +414,7 @@ public class Node implements Runnable {
                         }
 
                         // Inform everyone of the new state
-                        addBroadcastMessage(
-                                MessageType.STATE,
-                                state
-                        );
+                        addBroadcastMessage(MessageType.STATE, state);
                     }
                     break;
                 case RAFT_HEARTBEAT:
@@ -425,10 +423,7 @@ public class Node implements Runnable {
                         if (incomingMessage.getPayload() == State.FOLLOWER) {
                             // Reset timer for node disconnection
                             Timer temp = connection.getNodeTimeout();
-                            if (temp != null) {
-                                temp.cancel();
-                                temp.purge();
-                            }
+                            stopTimer(temp);
 
                             temp = new Timer();
                             temp.schedule(new NodeTimeoutTask(connection) {
@@ -442,16 +437,12 @@ public class Node implements Runnable {
                             }, 2000);
 
                             connection.setNodeTimeout(temp);
-//                            logConsole(connection.getName() + " is still alive");
                         }
                     } else {
                         if (incomingMessage.getPayload() == State.LEADER) {
 //                            logConsole("Received leader heartbeat!");
                             // Reset timer for reelection
-                            if (leaderTimeout != null) {
-                                leaderTimeout.cancel();
-                                leaderTimeout.purge();
-                            }
+                            stopTimer(leaderTimeout);
 
                             leaderTimeout = new Timer();
                             leaderTimeout.schedule(new NodeTimeoutTask(connection) {
@@ -463,15 +454,11 @@ public class Node implements Runnable {
                             }, 2000);
 
                             // Send heartbeat back
-                            addOutgoingMessage(
-                                    connection, createMessage(
-                                            incomingMessage.getSender(),
-                                            MessageType.RAFT_HEARTBEAT,
-                                            state
-                                    )
-                            );
-
-//                            logConsole("Leader is still alive!");
+                            addOutgoingMessage(connection, createMessage(
+                                    incomingMessage.getSender(),
+                                    MessageType.RAFT_HEARTBEAT,
+                                    state
+                            ));
                         }
                     }
                     break;
@@ -520,6 +507,7 @@ public class Node implements Runnable {
 
                                     @Override
                                     public void workerFinished(String range) {
+//                                        logConsole("Worker is finished!");
                                         primeWorker = null;
 
                                         // Tell the leader this range is finished
@@ -541,18 +529,23 @@ public class Node implements Runnable {
                     int[] range = Arrays.stream(information[0].trim().split(",")).mapToInt(Integer::parseInt).toArray();
                     Index newState = Index.valueOf(information[1]);
 
-//                    logConsole("State of primes in range " + Arrays.toString(range) + " changed to " + newState);
-
                     // Change the states of the indexes
-                    for (int i = range[0]; i < range[1]; ++i) {
+                    for (int i = range[0]; i <= range[1]; ++i) {
                         primeMap.put(i, newState);
                     }
 
                     if (state == State.LEADER) {
+                        stopTimer(connection.workTimeout);
+
+                        if (newState == Index.CLOSED) {
+                            logConsole("Primes in range " + Arrays.toString(range) + " are done!");
+                        }
+
                         // Inform every node of the state change
                         addBroadcastMessage(MessageType.WORK_STATE, incomingMessage.getPayload());
 
                         connection.setIsWorking(newState == Index.WORKING);
+                        connection.setShouldBeWorking(newState == Index.WORKING);
 //                        logConsole(connection + " has just finished something hehe boi");
                     }
                     break;
@@ -571,6 +564,11 @@ public class Node implements Runnable {
                         nodeRunning = false;
                     }
                     break;
+                case FINISHED:
+                    logConsole("Stopping this node!");
+
+                    stopNode();
+                    break;
                 default:
                     logConsole("Message fits no type " + incomingMessage);
                     break;
@@ -578,35 +576,51 @@ public class Node implements Runnable {
         }
     }
 
+    private void stopTimer(Timer timer) {
+        if (timer != null) {
+            timer.cancel();
+            timer.purge();
+        }
+    }
+
     public void distributeWork(Connection connection) {
         int index = 0;
-        while (primeMap.get(index) != Index.OPEN) ++index;
+        while (primeMap.get(index) != Index.OPEN && primeMap.get(index) != null) ++index;
 
         if (primeMap.get(index) != null) {
-            // Update the working packages
-            int actualWorkSize = index + workSize < primeMap.size() ? workSize : primeMap.size() - index;
+            if (index > 0) --index;
 
-            for (int i = index; i < index + actualWorkSize; ++i) {
+            // Update the working packages
+            int actualWorkSize = workSize;
+            if (index + workSize > primeMap.size()) {
+                actualWorkSize = primeMap.size() - index;
+                distributeWork = false;
+            }
+
+            for (int i = index; i <= index + actualWorkSize; ++i) {
                 primeMap.put(i, Index.TENTATIVE);
             }
 
             int finalIndex = index;
+            int finalActualWorkSize = actualWorkSize;
+
+            // The node has 5 seconds to confirm they're working on it
             Timer workTimeout = new Timer();
             TimerTask workTimeoutTask = new NodeTimeoutTask(connection) {
                 @Override
                 public void run() {
-                    if (!this.node.isWorking()) {
-                        this.node.setShouldBeWorking(false);
+                    logConsole(connection.getName() + " failed to response! Therefore, the working range is reset");
+                    this.node.setShouldBeWorking(false);
 
-                        for (int i = finalIndex; i < finalIndex + actualWorkSize; ++i) {
-                            if (primeMap.get(i) == Index.TENTATIVE) {
-                                primeMap.put(i, Index.OPEN);
-                            }
+                    for (int i = finalIndex; i <= finalIndex + finalActualWorkSize; ++i) {
+                        if (primeMap.get(i) == Index.TENTATIVE) {
+                            primeMap.put(i, Index.OPEN);
                         }
                     }
                 }
             };
             workTimeout.schedule(workTimeoutTask, 5000);
+            connection.setWorkTimeout(workTimeout);
 
             // Convert the range to a string
             String stringRange = index + "," + (index + actualWorkSize - 1);
@@ -619,7 +633,10 @@ public class Node implements Runnable {
             ));
 
             connection.setShouldBeWorking(true);
-            logConsole("Distributed work to " + connection.getName());
+            logConsole("Distributed work (" + stringRange + ") to " + connection.getName());
+        } else {
+            logConsole("Every package distributed");
+            distributeWork = false;
         }
     }
 
@@ -684,7 +701,7 @@ public class Node implements Runnable {
                     }
                 }
             } catch (IOException e) {
-                e.printStackTrace();
+                logConsole(e, "connection to a new connection");
             }
         }
 
@@ -701,7 +718,7 @@ public class Node implements Runnable {
         try {
             connectTo(InetAddress.getByName(host), port);
         } catch (UnknownHostException e) {
-            e.printStackTrace();
+            logConsole(e, "parsing the host name");
         }
     }
 
@@ -712,6 +729,10 @@ public class Node implements Runnable {
      */
     public void logConsole(String log) {
         System.out.println("[" + this.name + "]: " + log);
+    }
+
+    public void logConsole(Exception e, String errorOccurrence) {
+        logConsole("Encountered an error while " + errorOccurrence + ": " + e.toString());
     }
 
     /**
@@ -814,14 +835,30 @@ public class Node implements Runnable {
     }
 
     /**
-     * Stops the execution of the SocketServer and CommunicationHandler.
+     * Stops the execution of the SocketServer, CommunicationHandler and Raft protocol.
      */
     public void stopNode() {
         nodeRunning = false;
 
-        if (leaderTimeout != null) {
-            leaderTimeout.cancel();
-            leaderTimeout.purge();
+        // Stop the leader timeout
+        stopTimer(leaderTimeout);
+
+        // Stop the raft tasks
+        raft.stop();
+
+        // TODO: Stop the prime worker
+
+        if (state == State.LEADER) {
+            // Stop the disconnection timeouts
+            for (Connection c : connections.values()) {
+                stopTimer(c.getNodeTimeout());
+            }
+        }
+
+        try {
+            socketServer.serverSocket.close();
+        } catch (IOException e) {
+            logConsole(e, "closing the ServerSocket");
         }
     }
 

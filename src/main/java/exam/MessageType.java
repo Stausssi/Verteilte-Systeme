@@ -43,7 +43,10 @@ public enum MessageType {
     WORK_STATE("work_state"),
 
     // A message of the type PRIMES contains p and q needed for the RSA decryption
-    PRIMES("primes");
+    PRIMES("primes"),
+
+    // A message of the type FINISHED notifies everyone that the task was finished
+    FINISHED("finished");
 
     private final String typeAsString;
 
