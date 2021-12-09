@@ -14,7 +14,7 @@ import java.util.*;
  * This class represents the client, which will connect to the cluster of Nodes and send the RSA request.
  */
 public class Client {
-    private static final int primeCount = 100;
+    private static final int primeCount = 10000;
 
     private static final HashMap<Integer, String> cipherMap;
     static {
@@ -58,7 +58,6 @@ public class Client {
         do {
             ++reconnectCount;
             previousCalculation = startTime == 0 ? 0 : System.currentTimeMillis() - startTime;
-            startTime = System.currentTimeMillis();
 
             // Connect to any socket in the system
             try {
@@ -106,6 +105,7 @@ public class Client {
 
 //                System.out.println("Received the connections " + otherConnections + " from the Cluster.");
 
+                startTime = System.currentTimeMillis();
                 System.out.println("Waiting for the cluster to solve the problem...");
                 // Now wait for the cluster to solve the key
                 while (!cluster.isClosed()) {

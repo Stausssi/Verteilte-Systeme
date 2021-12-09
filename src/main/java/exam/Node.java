@@ -33,10 +33,10 @@ public class Node implements Runnable {
     private Connection clientConnection;
 
     //Vars for primes
-    private static final String primesFile = "/primes100.txt";
+    private static final String primesFile = "/primes10000.txt";
     public volatile ConcurrentHashMap<Integer, Index> primeMap = new ConcurrentHashMap<>();
     private final ArrayList<String> primeList = new ArrayList<>();
-    private static final int workSize = 10;
+    private static final int workSize = 250;
 
     public volatile ConcurrentHashMap<String, Connection> connections = new ConcurrentHashMap<>();
     public volatile ConcurrentHashMap<Connection, ConcurrentLinkedQueue<Message>> outgoingMessages = new ConcurrentHashMap<>();
@@ -138,7 +138,7 @@ public class Node implements Runnable {
                     logConsole(e, "starting the SocketServer");
                 }
 
-                logConsole("Started server socket on: " + serverSocket);
+//                logConsole("Started server socket on: " + serverSocket);
 
                 while (nodeRunning) {
                     // Accept a new connection
@@ -203,7 +203,7 @@ public class Node implements Runnable {
                     logConsole(e, "handling connections in the SocketServer");
                 }
             }
-            logConsole("SocketServer is gone");
+//            logConsole("SocketServer is gone");
         }
 
         private Message createWelcomeMessage(String connectionName) {
@@ -236,7 +236,7 @@ public class Node implements Runnable {
     private class CommunicationHandler implements Runnable {
         @Override
         public void run() {
-            logConsole("The CommunicationHandler was started");
+//            logConsole("The CommunicationHandler was started");
 
             while (nodeRunning || !broadcastMessages.isEmpty()) {
                 // Go through every broadcast message
@@ -281,7 +281,7 @@ public class Node implements Runnable {
                     }
                 }
             }
-            logConsole("CommunicationHandler is gone");
+//            logConsole("CommunicationHandler is gone");
         }
 
         /**

@@ -1,48 +1,37 @@
 package exam;
 
 import java.net.UnknownHostException;
+import java.util.ArrayList;
+import java.util.List;
 
 public class TestApplication {
     public static void main(String[] args) throws InterruptedException, UnknownHostException {
-        Node node1 = new Node(4444, "Node1");
-        Node node2 = new Node(4445, "Node2");
-        Node node3 = new Node(2342, "Node3");
-        Node node4 = new Node(3333, "Node4");
+        int[] ports = {4445, 2342, 3333, 6969, 6900, 1234};
+        List<Thread> openedThreads = new ArrayList<>();
 
-        Thread thread1 = new Thread(node1);
-        Thread thread2 = new Thread(node2);
-        Thread thread3 = new Thread(node3);
-        Thread thread4 = new Thread(node4);
-
-        thread1.start();
-        thread2.start();
-        thread3.start();
-        thread4.start();
+        Node defaultNode = new Node(4444, "Main Node");
+        Thread defaultThread = new Thread(defaultNode);
+        defaultThread.start();
+        openedThreads.add(defaultThread);
 
         Thread.sleep(1000);
-        node2.connectTo("localhost", 4444);
 
-        node3.connectTo("localhost", 4445);
-        node1.connectTo("localhost", 2342);
+        for (int port : ports) {
+            Node node = new Node(port, "Node " + port);
+            Thread thread = new Thread(node);
+            thread.start();
 
-        node4.connectTo("localhost", 4445);
+            Thread.sleep(500);
+            node.connectTo("localhost", 4444);
+            openedThreads.add(thread);
+        }
 
-//        Thread.sleep(1000);
-//        node1.logConnections();
-//        node2.logConnections();
-//        node3.logConnections();
-//        node4.logConnections();
-
-//        Thread.sleep(5000);
-//        node4.stopNode();
-//        Thread.sleep(2000);
-//        node1.stopNode();
+//        defaultNode.logConnections();
 
         try {
-            thread1.join();
-            thread2.join();
-            thread3.join();
-            thread4.join();
+            for (Thread t : openedThreads) {
+                t.join();
+            }
         } catch (InterruptedException e) {
             e.printStackTrace();
         }

@@ -102,6 +102,6 @@ class Raft implements Runnable {
         electionTimeout.cancel();
         electionTimeout.purge();
 
-        raftNode.logConsole("Raft is stopped!");
+//        raftNode.logConsole("Raft is stopped!");
     }
 }
