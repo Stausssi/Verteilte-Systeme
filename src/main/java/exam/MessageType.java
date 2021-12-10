@@ -46,7 +46,10 @@ public enum MessageType {
     PRIMES("primes"),
 
     // A message of the type FINISHED notifies everyone that the task was finished
-    FINISHED("finished");
+    FINISHED("finished"),
+
+    // A message of the type INVALID indicates that the message is invalid (default)
+    INVALID("invalid");
 
     private final String typeAsString;
 

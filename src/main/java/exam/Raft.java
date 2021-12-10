@@ -2,17 +2,18 @@ package exam;
 
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.logging.Logger;
 
-import static exam.Utility.restartTimer;
-import static exam.Utility.stopTimer;
+import static exam.Utility.*;
 
 class Raft implements Runnable {
-    public Node raftNode;
+    private final Node raftNode;
+    private Logger logger;
+
     final Timer electionTimeout = new Timer();
     private final TimerTask timeoutTask = new TimerTask() {
         @Override
         public void run() {
-            //System.out.println("Raft: Waiting for connection!");
             while (raftNode.connections.isEmpty()) {
                 try {
                     Thread.sleep(500);
@@ -20,7 +21,7 @@ class Raft implements Runnable {
                     e.printStackTrace();
                 }
             }
-            //System.out.println("Raft: Connection found!");
+
             if (!checkLeader()) {
                 startElection();
             }
@@ -35,7 +36,9 @@ class Raft implements Runnable {
 
     @Override
     public void run() {
-        //System.out.println("Raft: Thread started!");
+        logger = initializeLogger(raftNode.name);
+
+        logger.info("Raft started!");
         //Delay start of Raft to allow for connections
         try {
             Thread.sleep(5000);
@@ -53,15 +56,17 @@ class Raft implements Runnable {
         // Check whether there is a node which is not a Follower
         for (Connection c : raftNode.connections.values()) {
             if (c.getState() != State.FOLLOWER || raftNode.state != State.FOLLOWER) {
+                logger.fine("Cluster has a leader!");
                 return true;
             }
         }
 
+        logger.fine("Cluster has no leader!");
         return false;
     }
 
     private void startElection() {
-//        System.out.println("Election started!");
+        logger.info("Raft election started!");
         raftNode.state = State.CANDIDATE;
         raftNode.hasVoted = true;
 
@@ -72,17 +77,12 @@ class Raft implements Runnable {
         );
     }
 
-    private void writeEntry() {
-
-    }
-
     public void initLeaderHeartbeat() {
         leaderHeartbeat = restartTimer(
                 leaderHeartbeat,
                 new TimerTask() {
                     @Override
                     public void run() {
-                        //System.out.println("Heartbeat" + raftNode.name);
                         // Send a broadcast message
                         raftNode.addBroadcastMessage(
                                 MessageType.RAFT_HEARTBEAT,
@@ -99,6 +99,6 @@ class Raft implements Runnable {
         stopTimer(leaderHeartbeat);
         stopTimer(electionTimeout);
 
-//        raftNode.logConsole("Raft is stopped!");
+        logger.info("Raft shutdown!");
     }
 }

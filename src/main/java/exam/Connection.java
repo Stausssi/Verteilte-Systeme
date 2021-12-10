@@ -29,13 +29,14 @@ public class Connection {
      * @param port the port of the socket server
      * @param name the name of the Node
      * @param socket the socket instance
+     * @param messageHandler the message handler
      */
-    public Connection(InetAddress address, int port, String name, Socket socket) {
+    public Connection(InetAddress address, int port, String name, Socket socket, ObjectMessageHandler messageHandler) {
         this.address = address;
         this.port = port;
         this.name = name;
         this.socket = socket;
-        this.messageHandler = new ObjectMessageHandler(socket);
+        this.messageHandler = messageHandler;
     }
 
     /**
@@ -150,5 +151,15 @@ public class Connection {
 
     public void setWorkTimeout(Timer workTimeout) {
         this.workTimeout = workTimeout;
+    }
+
+    @Override
+    public String toString() {
+        return "Connection{" +
+                "address=" + address +
+                ", port=" + port +
+                ", name='" + name + '\'' +
+                ", state=" + state +
+                '}';
     }
 }

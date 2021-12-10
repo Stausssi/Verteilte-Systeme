@@ -7,12 +7,12 @@ import java.time.Instant;
  * This class is a sendable message object containing important information
  */
 public class Message implements Serializable {
-    private String sender;
-    private String receiver;
-    private Object payload;
+    private String sender = "";
+    private String receiver = "";
+    private Object payload = "";
     private Instant time = Instant.now();
-    private String type; // may be an enum
-    private MessageType messageType;
+    private String type = ""; // may be an enum
+    private MessageType messageType = MessageType.INVALID;
     private int sequenceNo = -1;
 
     public String getSender() {

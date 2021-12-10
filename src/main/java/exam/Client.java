@@ -7,14 +7,21 @@ import java.net.InetAddress;
 import java.net.Socket;
 import java.net.UnknownHostException;
 import java.util.*;
+import java.util.logging.Logger;
+
+import static exam.Utility.createMessage;
+import static exam.Utility.initializeLogger;
 
 /**
  * This class represents the client, which will connect to the cluster of Nodes and send the RSA request.
  */
 public class Client {
+    private final Logger logger = initializeLogger("Client");
+
     private static final int primeCount = 10000;
 
     private static final HashMap<Integer, String> cipherMap;
+
     static {
         cipherMap = new HashMap<>();
         cipherMap.put(100, "b4820013b07bf8513ee59a905039fb631203c8b38ca3d59b475b4e4e092d3979");
@@ -24,6 +31,7 @@ public class Client {
     }
 
     private static final HashMap<Integer, String> keyMap;
+
     static {
         keyMap = new HashMap<>();
         keyMap.put(100, "298874689697528581074572362022003292763");
@@ -40,9 +48,11 @@ public class Client {
     private boolean primesFound = false;
 
     private void work() {
+        logger.info("Started the client!");
+
         try {
             // Add the default node to the connections
-            otherConnections.add(new AbstractMap.SimpleEntry<>(InetAddress.getByName("localhost"), 4444));
+            otherConnections.add(new AbstractMap.SimpleEntry<>(InetAddress.getByName("localhost"), 1234));
         } catch (UnknownHostException e) {
             e.printStackTrace();
         }
@@ -61,24 +71,21 @@ public class Client {
             try {
                 // Get the first element on the stack
                 Map.Entry<InetAddress, Integer> clusterConnection = otherConnections.pop();
-
                 Socket cluster = new Socket(clusterConnection.getKey(), clusterConnection.getValue());
-                ObjectMessageHandler messageHandler = new ObjectMessageHandler(cluster);
+                ObjectMessageHandler messageHandler = new ObjectMessageHandler(cluster, "Client");
+                logger.info("Connected to: " + cluster);
 
                 // Send the RSA information
-                Message rsaInfo = new Message();
-                rsaInfo.setSender("Client");
-                rsaInfo.setMessageType(MessageType.RSA);
-                rsaInfo.setPayload(publicKey);
-                messageHandler.write(rsaInfo);
+                messageHandler.write(createMessage("Cluster", MessageType.RSA, publicKey));
+                logger.info("Public key sent!");
 
                 // Reset the list
                 otherConnections.clear();
 
                 // Read welcome message
                 Message welcome = messageHandler.read();
-                System.out.println("Connected to the cluster!");
                 if (welcome.getMessageType() == MessageType.WELCOME) {
+                    logger.info("Received cluster welcome!");
                     for (String connectionInformation : ((String) welcome.getPayload()).split(",")) {
                         if (connectionInformation.length() > 0) {
                             String[] connection = connectionInformation.split(":");
@@ -99,46 +106,49 @@ public class Client {
                             ));
                         }
                     }
-                }
 
-//                System.out.println("Received the connections " + otherConnections + " from the Cluster.");
 
-                startTime = System.currentTimeMillis();
-                System.out.println("Waiting for the cluster to solve the problem...");
-                // Now wait for the cluster to solve the key
-                while (!cluster.isClosed()) {
-                    Message incomingMessage = messageHandler.read();
-//                    System.out.println("Received: " + incomingMessage);
+                    logger.info("Received the connections " + otherConnections + " from the Cluster.");
+                    logger.info("Waiting for the cluster to solve the problem...");
 
-                    if (incomingMessage.getMessageType() == MessageType.PRIMES) {
-                        String[] primes = ((String) incomingMessage.getPayload()).replace(" ", "").split(",");
-                        System.out.println("Received the primes " + Arrays.toString(primes) + " from the cluster!");
+                    startTime = System.currentTimeMillis();
+                    // Now wait for the cluster to solve the key
+                    while (!cluster.isClosed()) {
+                        Message incomingMessage = messageHandler.read();
+                        if (incomingMessage.getMessageType() == MessageType.PRIMES) {
+                            String[] primes = ((String) incomingMessage.getPayload()).replace(" ", "").split(",");
+                            logger.info("Received the primes " + Arrays.toString(primes) + " from the cluster!");
 
-                        String p = primes[0];
-                        String q = primes[1];
+                            String p = primes[0];
+                            String q = primes[1];
 
-                        primesFound = helper.isValid(p, q, publicKey);
-                        if (primesFound) {
-                            endTime = System.currentTimeMillis();
+                            primesFound = helper.isValid(p, q, publicKey);
+                            if (primesFound) {
+                                endTime = System.currentTimeMillis();
 
-                            System.out.println("Primes are valid!");
-                            System.out.println("Decrypted text is: " + helper.decrypt(p, q, encrypted));
-                        } else {
-                            System.out.println("Primes dont fit!");
+                                logger.info("Primes are valid!");
+                                logger.info("Decrypted text is: " + helper.decrypt(p, q, encrypted));
+                            } else {
+                                logger.info("Primes dont fit!");
+                            }
+
+                            cluster.close();
                         }
-
-                        cluster.close();
                     }
                 }
             } catch (IOException e) {
-                e.printStackTrace();
+                logger.warning("Exception while communicating with the cluster: " + e);
             }
         } while (!otherConnections.isEmpty() && !primesFound);
 
-        // Calculate the duration it took the cluster to solve the problem
-        double calcDuration = (endTime - startTime + previousCalculation) / 1000;
+        if (primesFound) {
+            // Calculate the duration it took the cluster to solve the problem
+            double calcDuration = (endTime - startTime + previousCalculation) / 1000;
 
-        System.out.println("The calculation took " + calcDuration + " second(s) with " + reconnectCount + " reconnects!");
+            logger.info("The calculation took " + calcDuration + " second(s) with " + reconnectCount + " reconnects!");
+        } else {
+            logger.severe("The cluster couldn't solve the problem!");
+        }
     }
 
     public static void main(String[] args) {
