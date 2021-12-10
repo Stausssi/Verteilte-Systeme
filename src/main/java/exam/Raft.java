@@ -3,6 +3,9 @@ package exam;
 import java.util.Timer;
 import java.util.TimerTask;
 
+import static exam.Utility.restartTimer;
+import static exam.Utility.stopTimer;
+
 class Raft implements Runnable {
     public Node raftNode;
     final Timer electionTimeout = new Timer();
@@ -74,7 +77,7 @@ class Raft implements Runnable {
     }
 
     public void initLeaderHeartbeat() {
-        leaderHeartbeat = raftNode.restartTimer(
+        leaderHeartbeat = restartTimer(
                 leaderHeartbeat,
                 new TimerTask() {
                     @Override
@@ -93,8 +96,8 @@ class Raft implements Runnable {
     }
 
     public void stop() {
-        raftNode.stopTimer(leaderHeartbeat);
-        raftNode.stopTimer(electionTimeout);
+        stopTimer(leaderHeartbeat);
+        stopTimer(electionTimeout);
 
 //        raftNode.logConsole("Raft is stopped!");
     }
