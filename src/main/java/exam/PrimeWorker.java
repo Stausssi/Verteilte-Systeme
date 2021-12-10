@@ -14,9 +14,9 @@ interface WorkerCallback {
 
 public class PrimeWorker {
     private final String publicKey;
-    private final String[] primes;
+    private final ArrayList<String> primes;
     private final Logger logger;
-    WorkerCallback callbacks;
+    private final WorkerCallback callbacks;
     private final RSAHelper rsaHelper = new RSAHelper();
 
     private String range;
@@ -27,7 +27,7 @@ public class PrimeWorker {
     PrimeWorker(String publicKey, ArrayList<String> primes, WorkerCallback callbacks, Logger logger) {
         this.logger = logger;
         this.publicKey = publicKey;
-        this.primes = primes.toArray(new String[0]);
+        this.primes = primes;
         this.callbacks = callbacks;
     }
 
@@ -41,7 +41,7 @@ public class PrimeWorker {
 
             // Loop over every prime in the array and combine it with every prime greater than that
             for (int i = rangeArray[0]; i <= rangeArray[1]; ++i) {
-                String p = primes[i];
+                String p = primes.get(i);
                 for (String q : primes) {
                     logger.finest("Combining " + p + " with " + q);
                     boolean valid = rsaHelper.isValid(p, q, publicKey);
@@ -69,9 +69,9 @@ public class PrimeWorker {
             worker = new WorkerThread();
             workerThread = new Thread(worker);
             workerThread.start();
+            isRunning = true;
 
             logger.info("PrimeWorker started working on range " + range);
-            isRunning = true;
             return true;
         } else {
             logger.info("PrimeWorker is already working!");
@@ -82,8 +82,8 @@ public class PrimeWorker {
     public void stopWorking() {
         if (worker != null) {
             worker.stopWorking = true;
+            logger.info("Stopped the prime worker!");
         }
-        logger.info("Stopped the prime worker!");
     }
 
     private void workerFinished(boolean fireCallback) {

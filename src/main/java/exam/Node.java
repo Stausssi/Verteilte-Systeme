@@ -43,7 +43,7 @@ public class Node implements Runnable {
     private static final String primesFile = "/primes10000.txt";
     public volatile ConcurrentHashMap<Integer, Index> primeMap = new ConcurrentHashMap<>();
     private final ArrayList<String> primeList = new ArrayList<>();
-    private static final int workSize = 100;
+    private static final int workSize = 150;
 
     // Concurrent data storage for connections and messages
     public volatile ConcurrentHashMap<String, Connection> connections = new ConcurrentHashMap<>();
@@ -560,13 +560,11 @@ public class Node implements Runnable {
             // Update the working packages
             if (endRange >= primeMap.size()) {
                 endRange = primeMap.size() - 1;
+
                 logger.warning(startRange + " + " + (workSize - 1) + "is bigger than " + (primeMap.size() - 1) + "! Only working from " + startRange + " to " + endRange);
-                distributeWork = false;
             }
 
-            for (int i = startRange; i <= endRange; ++i) {
-                primeMap.put(i, Index.TENTATIVE);
-            }
+            modifyPrimesMap(startRange, endRange, Index.TENTATIVE);
 
             // The node has 5 seconds to confirm they're working on it
             int finalStartRange = startRange;
@@ -576,12 +574,10 @@ public class Node implements Runnable {
             TimerTask workTimeoutTask = new NodeTimeoutTask(connection) {
                 @Override
                 public void run() {
-                    logger.warning(this.node.getName() + " failed to response! Therefore, the working range is reset");
+                    logger.info(this.node.getName() + " failed to response in time!");
                     this.node.setShouldBeWorking(false);
 
-                    for (int i = finalStartRange; i <= finalEndRange; ++i) {
-                        primeMap.put(i, Index.OPEN);
-                    }
+                    modifyPrimesMap(finalStartRange, finalEndRange, Index.OPEN);
                 }
             };
             workTimeout.schedule(workTimeoutTask, 5000);
@@ -598,6 +594,12 @@ public class Node implements Runnable {
         } else {
             logger.info("Every package distributed!");
             distributeWork = false;
+
+            // Let everyone know that we are finished
+            addBroadcastMessage(MessageType.FINISHED, "");
+
+            // Also stop this node
+            stopNode();
         }
     }
 
@@ -612,9 +614,7 @@ public class Node implements Runnable {
         logger.info("Prime range " + Arrays.toString(range) + " changed to " + state);
 
         // Change the states of the indexes
-        for (int i = range[0]; i <= range[1]; ++i) {
-            primeMap.put(i, state);
-        }
+        modifyPrimesMap(range, state);
 
         if (this.state == State.LEADER) {
             // Notify everyone of the change
@@ -632,6 +632,16 @@ public class Node implements Runnable {
                 // Also stop this node
                 stopNode();
             }
+        }
+    }
+
+    private synchronized void modifyPrimesMap(int[] range, Index state) {
+        modifyPrimesMap(range[0], range[1], state);
+    }
+
+    private synchronized void modifyPrimesMap(int lower, int upper, Index state) {
+        for (int i = lower; i <= upper; ++i) {
+            primeMap.put(i, state);
         }
     }
 
@@ -791,11 +801,17 @@ public class Node implements Runnable {
      * @param connection the connection of the disconnected Node.
      */
     private void handleNodeTimeout(Connection connection) {
-        // Broadcast the timeout if this node is the leader
-        String connectionKey = createConnectionKey(connection.getAddress(), connection.getPort());
-        connection = connections.get(connectionKey);
+        // Check whether the connection is in the hash map
+        if (!connections.containsValue(connection)) {
+            try {
+                connection = connections.get(createConnectionKey(connection));
+            } catch (NullPointerException e) {
+                logger.warning("Passed connection was null!");
+            }
+        }
 
         if (connection != null) {
+            String connectionKey = createConnectionKey(connection.getAddress(), connection.getPort());
             logger.info(connection.getName() + " (" + connection.getState() + ") disconnected!");
 
             if (connection.getState() == State.LEADER) {
@@ -806,8 +822,9 @@ public class Node implements Runnable {
 
                 // Reset every WORKING Index to OPEN
                 for (Map.Entry<Integer, Index> entry : primeMap.entrySet()) {
+                    int index = entry.getKey();
                     if (entry.getValue() == Index.WORKING) {
-                        primeMap.put(entry.getKey(), Index.OPEN);
+                        modifyPrimesMap(index, index, Index.OPEN);
                     }
                 }
 
@@ -819,7 +836,9 @@ public class Node implements Runnable {
                 addBroadcastMessage(MessageType.DISCONNECT, connectionKey);
 
                 // Change the indexes this Node was working on to open
-                updatePrimeState(connection.getWorkRange(), Index.OPEN, connection);
+                if (connection.getWorkRange() != null) {
+                    updatePrimeState(connection.getWorkRange(), Index.OPEN, connection);
+                }
             }
 
             // Remove the connection

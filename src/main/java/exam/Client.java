@@ -18,7 +18,7 @@ import static exam.Utility.initializeLogger;
 public class Client {
     private final Logger logger = initializeLogger("Client");
 
-    private static final int primeCount = 1000;
+    private static final int primeCount = 10000;
 
     private static final HashMap<Integer, String> cipherMap;
 
@@ -77,7 +77,7 @@ public class Client {
 
                 // Send the RSA information
                 messageHandler.write(createMessage("Cluster", MessageType.RSA, publicKey));
-                logger.info("Public key sent!");
+                logger.fine("Public key sent!");
 
                 // Reset the list
                 otherConnections.clear();
@@ -85,7 +85,7 @@ public class Client {
                 // Read welcome message
                 Message welcome = messageHandler.read();
                 if (welcome.getMessageType() == MessageType.WELCOME) {
-                    logger.info("Received cluster welcome!");
+                    logger.fine("Received cluster welcome!");
                     for (String connectionInformation : ((String) welcome.getPayload()).split(",")) {
                         if (connectionInformation.length() > 0) {
                             String[] connection = connectionInformation.split(":");
@@ -108,7 +108,7 @@ public class Client {
                     }
 
 
-                    logger.info("Received the connections " + otherConnections + " from the Cluster.");
+                    logger.fine("Received the connections " + otherConnections + " from the Cluster.");
                     logger.info("Waiting for the cluster to solve the problem...");
 
                     startTime = System.currentTimeMillis();

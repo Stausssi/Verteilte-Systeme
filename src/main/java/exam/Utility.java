@@ -47,6 +47,10 @@ public final class Utility {
         return removeHostFromAddress(address) + ":" + port;
     }
 
+    public static String createConnectionKey(Connection connection) {
+        return createConnectionKey(connection.getAddress(), connection.getPort());
+    }
+
     /**
      * Removes the host name from the string representation of an InetAddress.
      *
