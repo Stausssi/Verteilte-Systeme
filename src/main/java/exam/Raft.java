@@ -7,6 +7,9 @@ import java.util.logging.Logger;
 import static exam.Utility.*;
 
 class Raft implements Runnable {
+    public static final int heartbeatInterval = 500;
+    public static final int timeoutTolerance = 2500;
+
     private final Node raftNode;
     private Logger logger;
 
@@ -39,16 +42,10 @@ class Raft implements Runnable {
         logger = initializeLogger(raftNode.name);
 
         logger.info("Raft started!");
-        //Delay start of Raft to allow for connections
-        try {
-            Thread.sleep(5000);
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
 
-        //Create random timeout for thread for election between 130 and 300 milliseconds
+        // Create random timeout for thread for election between 130 and 300 milliseconds
         long randomTimeout = (long) (Math.random() * (300 - 130 + 1) + 130);
-        electionTimeout.schedule(timeoutTask, 5, randomTimeout);
+        electionTimeout.schedule(timeoutTask, 2000, randomTimeout);
     }
 
 
@@ -90,8 +87,8 @@ class Raft implements Runnable {
                         );
                     }
                 },
-                50,
-                500
+                10,
+                heartbeatInterval
         );
     }
 

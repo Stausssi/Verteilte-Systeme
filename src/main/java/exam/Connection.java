@@ -17,10 +17,10 @@ public class Connection {
     private String name;
     private final ObjectMessageHandler messageHandler;
     private State state = State.FOLLOWER;
-    private boolean isWorking = false;
     private boolean shouldBeWorking = false;
     protected Timer nodeTimeout;
     protected Timer workTimeout;
+    private int[] workRange;
 
     /**
      * Creates a new Connection object.
@@ -127,14 +127,15 @@ public class Connection {
      * @return returns whether the node is currently working
      */
     public boolean isWorking() {
-        return isWorking;
+        return workRange != null;
     }
 
-    /**
-     * @param isWorking true, if the node is working
-     */
-    public void setIsWorking(boolean isWorking) {
-        this.isWorking = isWorking;
+    public int[] getWorkRange() {
+        return workRange;
+    }
+
+    public void setWorkRange(int[] range) {
+        this.workRange = range;
     }
 
     public boolean shouldBeWorking() {
@@ -152,6 +153,7 @@ public class Connection {
     public void setWorkTimeout(Timer workTimeout) {
         this.workTimeout = workTimeout;
     }
+
 
     @Override
     public String toString() {

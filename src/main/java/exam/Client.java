@@ -18,7 +18,7 @@ import static exam.Utility.initializeLogger;
 public class Client {
     private final Logger logger = initializeLogger("Client");
 
-    private static final int primeCount = 10000;
+    private static final int primeCount = 1000;
 
     private static final HashMap<Integer, String> cipherMap;
 

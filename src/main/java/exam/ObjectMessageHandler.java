@@ -46,7 +46,7 @@ public class ObjectMessageHandler {
      *
      * @param message the message to write to the socket
      */
-    public void write(Message message) throws IOException {
+    public synchronized void write(Message message) throws IOException {
         message.setSender(nodeName);
         logger.finest("Outgoing " + message);
 
