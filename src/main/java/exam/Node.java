@@ -12,6 +12,8 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
+import org.apache.commons.cli.*;
+
 /**
  * A Node represents a working element of the decryption task.
  * It has a server socket , to which other nodes can connect and send messages to, and a client socket, which will
@@ -158,19 +160,26 @@ public class Node implements Runnable {
                         if (connectionName != null && port > 0) {
                             // Send the node a serialized version of IP:Port combinations in the connections object
                             tempHandler.write(createWelcomeMessage(connectionName));
-
+                            Connection nodeConnection = new Connection(newConnection.getInetAddress(), port, connectionName, newConnection);
                             // Add newConnection to the HashMap
                             connections.put(
                                     createConnectionKey(newConnection.getInetAddress(), port),
-                                    new Connection(newConnection.getInetAddress(), port, connectionName, newConnection)
+                                    nodeConnection
                             );
 
                             // Inform the new node of the current state of this node
-                            tempHandler.write(createMessage(
+                            addOutgoingMessage(nodeConnection,createMessage(
                                     connectionName,
                                     MessageType.STATE,
                                     state
                             ));
+                            if(state == State.LEADER && publicKey.length() > 0) {
+                                addOutgoingMessage(nodeConnection, createMessage(
+                                        connectionName,
+                                        MessageType.RSA,
+                                        publicKey
+                                ));
+                            }
                         }
 
                         // Otherwise, the new connection might be a client
@@ -875,5 +884,70 @@ public class Node implements Runnable {
         }
     }
 
+    public static void main(String[] args) throws UnknownHostException, InterruptedException {
+        //CLI options to create Node
+        Options options = new Options();
+        Option port = new Option("p", "port", true, "Node port");
+        port.setRequired(true);
+        options.addOption(port);
+        Option name = new Option("n", "name", true, "Node name");
+        name.setRequired(true);
+        options.addOption(name);
+        Option address = new Option("i", "address", true, "Node IP-address");
+        address.setRequired(true);
+        options.addOption(address);
+
+        //CLI options for cluster connection
+        Option hostPort = new Option("hp","host_port",true,"Port of Node to connect to");
+        hostPort.setRequired(false);
+        options.addOption(hostPort);
+        Option hostAddress = new Option("ha","host_address", true, "Address of Node to connect to");
+        hostAddress.setRequired(false);
+        options.addOption(hostAddress);
+
+        //Command parsing
+        CommandLineParser parser = new DefaultParser();
+        HelpFormatter formatter = new HelpFormatter();
+        CommandLine cl = null;
+
+        try{
+            cl = parser.parse(options,args);
+
+        } catch (ParseException e) {
+            System.out.println(e.getMessage());
+            formatter.printHelp("Invalid argument list", options);
+            System.exit(0);
+        }
+        //Get parsed strings for node
+        String nodePort = cl.getOptionValue("port");
+        String nodeName = cl.getOptionValue("name");
+        String nodeAddress = cl.getOptionValue("address");
+
+        //Get parsed strings for cluster connection
+        String host_Port = cl.getOptionValue("host_port");
+        String host_Address = cl.getOptionValue("host_address");
+
+        System.out.println("Node: " + nodePort + " " + nodeName + " " + nodeAddress);
+        System.out.println("Cluster: " + host_Port + " " + host_Address);
+
+
+        Node clusterNode = new Node(Integer.parseInt(nodePort), nodeName);
+        Thread nodeThread = new Thread(clusterNode);
+        nodeThread.start();
+        Thread.sleep(1000);
+
+        //If
+
+        if(null != host_Port && null !=host_Address) {
+            clusterNode.connectTo(host_Address, Integer.parseInt(host_Port));
+        }
+
+        try {
+            nodeThread.join();
+        }
+        catch(InterruptedException e) {
+            e.printStackTrace();
+        }
+    }
 
 }
