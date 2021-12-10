@@ -74,33 +74,27 @@ class Raft implements Runnable {
     }
 
     public void initLeaderHeartbeat() {
-        if (leaderHeartbeat != null) {
-            leaderHeartbeat.cancel();
-            leaderHeartbeat.purge();
-        }
-
-        leaderHeartbeat = new Timer();
-        leaderHeartbeat.schedule(new TimerTask() {
-            @Override
-            public void run() {
-                //System.out.println("Heartbeat" + raftNode.name);
-                // Send a broadcast message
-                raftNode.addBroadcastMessage(
-                        MessageType.RAFT_HEARTBEAT,
-                        raftNode.state
-                );
-            }
-        }, 50, 500);
+        leaderHeartbeat = raftNode.restartTimer(
+                leaderHeartbeat,
+                new TimerTask() {
+                    @Override
+                    public void run() {
+                        //System.out.println("Heartbeat" + raftNode.name);
+                        // Send a broadcast message
+                        raftNode.addBroadcastMessage(
+                                MessageType.RAFT_HEARTBEAT,
+                                raftNode.state
+                        );
+                    }
+                },
+                50,
+                500
+        );
     }
 
     public void stop() {
-        if (leaderHeartbeat != null) {
-            leaderHeartbeat.cancel();
-            leaderHeartbeat.purge();
-        }
-
-        electionTimeout.cancel();
-        electionTimeout.purge();
+        raftNode.stopTimer(leaderHeartbeat);
+        raftNode.stopTimer(electionTimeout);
 
 //        raftNode.logConsole("Raft is stopped!");
     }

@@ -14,9 +14,9 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 
 /**
  * A Node represents a working element of the decryption task.
- * It has a server socket , to which other nodes can connect and send messages to, and a client socket, which will
- * connect and send messages to other nodes.
- * One Node in the system is the coordinator, which will distribute the tasks to the other nodes (so-called workers)
+ * It consists of a SocketServer, which will allow incoming connections, and a CommunicationHandler, which will parse
+ * incoming messages and respond / send messages.
+ * One Node in the system is the Leader, which will distribute the tasks to the other nodes (so-called workers)
  */
 public class Node implements Runnable {
     private static final int MAX_INCOMING_CLIENTS = 100;
@@ -24,20 +24,23 @@ public class Node implements Runnable {
     private boolean nodeRunning = true;
     private boolean distributeWork = false;
 
+    // Connection information of the node
     private final InetAddress address;
     private final int port;
     protected final String name;
     protected State state;
 
+    // Connections to the leader and client
     private Connection leaderConnection;
     private Connection clientConnection;
 
-    //Vars for primes
+    // Vars for primes
     private static final String primesFile = "/primes10000.txt";
     public volatile ConcurrentHashMap<Integer, Index> primeMap = new ConcurrentHashMap<>();
     private final ArrayList<String> primeList = new ArrayList<>();
     private static final int workSize = 250;
 
+    // Concurrent data storage for connections and messages
     public volatile ConcurrentHashMap<String, Connection> connections = new ConcurrentHashMap<>();
     public volatile ConcurrentHashMap<Connection, ConcurrentLinkedQueue<Message>> outgoingMessages = new ConcurrentHashMap<>();
     public volatile ConcurrentLinkedQueue<Message> broadcastMessages = new ConcurrentLinkedQueue<>();
@@ -46,7 +49,6 @@ public class Node implements Runnable {
     protected boolean hasVoted = false;
     private int votesReceived = 0;
     private int voteCount = 0;
-
     private Timer leaderTimeout;
 
     // RSA Stuff
@@ -59,11 +61,11 @@ public class Node implements Runnable {
     private final Raft raft = new Raft(this);
 
     /**
-     * Creates a new Node.
+     * Creates a new Node which will run on localhost by default.
      *
      * @param port the port the socket server will run on
      * @param name the name of the node
-     * @throws UnknownHostException if the host name is invalid
+     * @throws UnknownHostException Never.
      */
     public Node(int port, String name) throws UnknownHostException {
         this.address = InetAddress.getByName("localhost");
@@ -74,11 +76,12 @@ public class Node implements Runnable {
             fillPrimesMap();
         } catch (Exception e) {
             logConsole(e, "filling primes map");
+            stopNode();
         }
     }
 
     /**
-     * Creates a new Node.
+     * Creates a new Node running on a given adress and port.
      *
      * @param address the address of the socket server
      * @param port    the port the socket server will run on
@@ -93,6 +96,7 @@ public class Node implements Runnable {
             fillPrimesMap();
         } catch (Exception e) {
             logConsole(e, "filling primes map");
+            stopNode();
         }
     }
 
@@ -103,6 +107,7 @@ public class Node implements Runnable {
         Thread communicatorThread = new Thread(communicationHandler);
         Thread raftThread = new Thread(raft);
 
+        // Start the threads
         serverThread.start();
         communicatorThread.start();
         raftThread.start();
@@ -122,13 +127,14 @@ public class Node implements Runnable {
      * communication.
      */
     private class SocketServer implements Runnable {
+        // The socket instance
         private ServerSocket serverSocket;
 
         @Override
         public void run() {
-            // Open the ServerSocket
             try {
                 try {
+                    // Open the ServerSocket
                     this.serverSocket = new ServerSocket(
                             port,
                             MAX_INCOMING_CLIENTS,
@@ -136,6 +142,7 @@ public class Node implements Runnable {
                     );
                 } catch (IOException e) {
                     logConsole(e, "starting the SocketServer");
+                    stopNode();
                 }
 
 //                logConsole("Started server socket on: " + serverSocket);
@@ -193,19 +200,27 @@ public class Node implements Runnable {
                             communicationHandler.parseMessage(firstMessage, clientConnection);
                         }
 
-                        // Otherwise, close the connection
                     } else {
+                        // Otherwise, close the connection
                         newConnection.close();
                     }
                 }
             } catch (IOException e) {
                 if (!(e instanceof SocketException)) {
                     logConsole(e, "handling connections in the SocketServer");
+                    stopNode();
                 }
             }
 //            logConsole("SocketServer is gone");
         }
 
+        /**
+         * Creates a welcome message for a connection with the given name.
+         * It contains every node this node is connected to.
+         *
+         * @param connectionName The name of the connection
+         * @return The generated Message
+         */
         private Message createWelcomeMessage(String connectionName) {
             // Add each connection key IP:Port to a string, separated by ,
             StringBuilder connectionsBuilder = new StringBuilder();
@@ -422,30 +437,25 @@ public class Node implements Runnable {
                     if (state == State.LEADER) {
                         if (incomingMessage.getPayload() == State.FOLLOWER) {
                             // Reset timer for node disconnection
-                            Timer temp = connection.getNodeTimeout();
-                            stopTimer(temp);
-
-                            temp = new Timer();
-                            temp.schedule(new NodeTimeoutTask(connection) {
-                                @Override
-                                public void run() {
-                                    if (nodeRunning) {
-                                        logConsole(this.node.getName() + " disconnected!");
-                                        handleNodeTimeout(this.node);
-                                    }
-                                }
-                            }, 2000);
-
-                            connection.setNodeTimeout(temp);
+                            connection.setNodeTimeout(restartTimer(
+                                    connection.getNodeTimeout(),
+                                    new NodeTimeoutTask(connection) {
+                                        @Override
+                                        public void run() {
+                                            if (nodeRunning) {
+                                                logConsole(this.node.getName() + " disconnected!");
+                                                handleNodeTimeout(this.node);
+                                            }
+                                        }
+                                    },
+                                    2000
+                            ));
                         }
                     } else {
                         if (incomingMessage.getPayload() == State.LEADER) {
 //                            logConsole("Received leader heartbeat!");
                             // Reset timer for reelection
-                            stopTimer(leaderTimeout);
-
-                            leaderTimeout = new Timer();
-                            leaderTimeout.schedule(new NodeTimeoutTask(connection) {
+                            leaderTimeout = restartTimer(leaderTimeout, new NodeTimeoutTask(connection) {
                                 @Override
                                 public void run() {
                                     logConsole("The leader has died!");
@@ -576,13 +586,59 @@ public class Node implements Runnable {
         }
     }
 
-    private void stopTimer(Timer timer) {
+    /**
+     * Stops a given timer.
+     *
+     * @param timer the timer to stop
+     */
+    public void stopTimer(Timer timer) {
         if (timer != null) {
             timer.cancel();
             timer.purge();
         }
     }
 
+    /**
+     * Restarts a given timer with the given task and returns the timer.
+     *
+     * @param timer The timer to restart
+     * @param task  The task to run
+     * @param delay The delay before running the task
+     * @return the new timer
+     */
+    public Timer restartTimer(Timer timer, TimerTask task, int delay) {
+        stopTimer(timer);
+
+        timer = new Timer();
+        timer.schedule(task, delay);
+
+        return timer;
+    }
+
+    /**
+     * Restarts a given timer with the given task and returns the timer.
+     *
+     * @param timer  The timer to restart
+     * @param task   The task to run
+     * @param delay  The delay before running the task
+     * @param period The period to repeat the task with
+     * @return the new timer
+     */
+    public Timer restartTimer(Timer timer, TimerTask task, int delay, int period) {
+        stopTimer(timer);
+
+        timer = new Timer();
+        timer.schedule(task, delay, period);
+
+        return timer;
+    }
+
+
+    /**
+     * Distributes a working range to the given connection.
+     *
+     * @param connection the connection object to distribute work to
+     */
     public void distributeWork(Connection connection) {
         int index = 0;
         while (primeMap.get(index) != Index.OPEN && primeMap.get(index) != null) ++index;
@@ -795,6 +851,13 @@ public class Node implements Runnable {
         ));
     }
 
+    /**
+     * Adds a given message object to the list of outgoing messages for the given connection and therefore schedules it
+     * for sending.
+     *
+     * @param receiver the connection to send the message to
+     * @param message  the message to send
+     */
     protected synchronized void addOutgoingMessage(Connection receiver, Message message) {
         ConcurrentLinkedQueue<Message> messages = outgoingMessages.get(receiver);
         if (messages == null) {
@@ -821,6 +884,7 @@ public class Node implements Runnable {
             addBroadcastMessage(MessageType.DISCONNECT, connectionKey);
         }
 
+        // Remove the connection
         connections.remove(connectionKey);
     }
 
