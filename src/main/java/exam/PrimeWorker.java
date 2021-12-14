@@ -42,8 +42,9 @@ public class PrimeWorker {
             // Loop over every prime in the array and combine it with every prime greater than that
             for (int i = rangeArray[0]; i <= rangeArray[1]; ++i) {
                 String p = primes.get(i);
-                for (String q : primes) {
-                    logger.finest("Combining " + p + " with " + q);
+                for(int j = primes.indexOf(p) + 1; j<primes.size();j++) {
+                    String q = primes.get(j);
+                    logger.finest("Combining" + p + "with" + q);
                     boolean valid = rsaHelper.isValid(p, q, publicKey);
 
                     if (valid) {
