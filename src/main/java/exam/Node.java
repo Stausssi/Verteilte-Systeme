@@ -5,6 +5,7 @@ import tasks.io.InputOutput;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -825,9 +826,10 @@ public class Node implements Runnable {
      */
     private void fillPrimesMap() {
         try {
-            URL defaultImage = Node.class.getResource(primesFile);
-            assert defaultImage != null;
-            File imageFile = new File(defaultImage.toURI());
+            URL resource = getClass().getResource(primesFile);
+            assert resource != null;
+
+            File imageFile = new File(resource.toExternalForm());
             String primes = InputOutput.readFile(imageFile);
             String[] primesList = primes.split(String.valueOf('\n'));
             for (int i = 0; i < primesList.length; i++) {
@@ -1107,7 +1109,7 @@ public class Node implements Runnable {
                 socketServer.serverSocket.close();
             } catch (IOException e) {
                 logError("closing the ServerSocket", e, false);
-            }
+            } catch (NullPointerException ignored) {}
         }
     }
 

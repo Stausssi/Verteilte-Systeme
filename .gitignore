@@ -44,3 +44,5 @@ gradle-app.setting
 inputOutput.txt
 socketoutput.txt
 logging/*
+
+!jars/*
