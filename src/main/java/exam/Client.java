@@ -151,7 +151,7 @@ public class Client {
             // Calculate the duration it took the cluster to solve the problem
             double calcDuration = (endTime - startTime + previousCalculation) / 1000;
 
-            logger.info("The calculation took " + calcDuration + " second(s) with " + reconnectCount + " reconnects!");
+            logger.info("The calculation took " + calcDuration + " second(s) with " + reconnectCount + " reconnect(s)!");
         } else {
             logger.severe("The cluster couldn't solve the problem!");
         }
