@@ -832,11 +832,6 @@ public class Node implements Runnable {
                 boolean everythingDone = !primeWorker.isRunning;
                 for (Connection workerNode : connections.values()) {
                     everythingDone = everythingDone && !workerNode.isWorking();
-
-                    if (!everythingDone) {
-                        logger.info(workerNode.getName() + "is still working!");
-                        break;
-                    }
                 }
 
                 if (everythingDone) {
@@ -845,8 +840,6 @@ public class Node implements Runnable {
 
                     // Also stop this node
                     stopNode();
-                } else {
-                    logger.info("There are still nodes working!");
                 }
             }
         }
@@ -1023,7 +1016,7 @@ public class Node implements Runnable {
      * @param critical        Whether this error is critical to the Nodes' functionality
      */
     public void logError(String errorOccurrence, Exception e, boolean critical) {
-        logger.log(critical ? Level.SEVERE : Level.WARNING, "Encountered " + e.toString() + " while " + errorOccurrence + ": " + e.getMessage());
+        logger.log(critical ? Level.SEVERE : Level.WARNING, "Encountered " + e.getClass().getSimpleName() + " while " + errorOccurrence + ": " + e.getMessage());
 
         if (critical) {
             stopNode();
