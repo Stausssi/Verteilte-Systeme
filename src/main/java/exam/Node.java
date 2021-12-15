@@ -242,11 +242,19 @@ public class Node implements Runnable {
                             // Send the new node the public key and client connection, if it exists -> Rejoin
                             if (state == State.LEADER && publicKey.length() > 0) {
                                 addOutgoingMessage(nodeConnection, createMessage(connectionName, MessageType.RSA, publicKey));
-                                addOutgoingMessage(nodeConnection, createMessage(
-                                        connectionName,
-                                        MessageType.CLIENT_CONNECTION,
-                                        createConnectionKey(getClientConnectionAddress(), getClientConnectionPort())
-                                ));
+
+                                // Give the new node 2 seconds to connect to every other node
+                                // Otherwise, sending this message to early could result in a null pointer
+                                delayExecution(new TimerTask() {
+                                    @Override
+                                    public void run() {
+                                        addOutgoingMessage(nodeConnection, createMessage(
+                                                connectionName,
+                                                MessageType.CLIENT_CONNECTION,
+                                                createConnectionKey(getClientConnectionAddress(), getClientConnectionPort())
+                                        ));
+                                    }
+                                }, 2000);
                             }
 
                             logger.fine("New Node was successfully added!");
@@ -824,6 +832,10 @@ public class Node implements Runnable {
                 boolean everythingDone = true;
                 for (PrimeState primeState : primeMap.values()) {
                     everythingDone = everythingDone && primeState == PrimeState.CLOSED;
+
+                    if (!everythingDone) {
+                        logger.info("There are still packages missing!");
+                    }
                 }
 
                 if (everythingDone) {
