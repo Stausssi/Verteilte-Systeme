@@ -382,16 +382,7 @@ public class Node implements Runnable {
                             if (message.getMessageType() == MessageType.PRIMES_RECEIVED) {
                                 logger.info("The Client received the primes!");
 
-                                if (state == State.LEADER) {
-                                    // Let everyone know that we are finished
-                                    addBroadcastMessage(MessageType.FINISHED, "");
-
-                                    // Also stop this node
-                                    stopNode();
-                                } else {
-                                    // Forward to the leader
-                                    addOutgoingMessage(leaderConnection, message);
-                                }
+                                handlePrimesReceivedMessage(message);
                             }
                         }
                     } catch (IOException e) {
@@ -415,6 +406,9 @@ public class Node implements Runnable {
                     break;
                 case PRIMES:
                     handlePrimeMessage(incomingMessage);
+                    break;
+                case PRIMES_RECEIVED:
+                    handlePrimesReceivedMessage(incomingMessage);
                     break;
                 case RAFT_ELECTION:
                     handleRaftElectionMessage(incomingMessage, connection);
@@ -455,6 +449,19 @@ public class Node implements Runnable {
          * Some Methods are given the connection object as well, since they directly respond to the message or need access
          * to variables of the Connection.
          */
+
+        private void handlePrimesReceivedMessage(Message incomingMessage) {
+            if (state == State.LEADER) {
+                // Let everyone know that we are finished
+                addBroadcastMessage(MessageType.FINISHED, "");
+
+                // Also stop this node
+                stopNode();
+            } else {
+                // Forward to the leader
+                addOutgoingMessage(leaderConnection, incomingMessage);
+            }
+        }
 
         private void handleRSAMessage(Message incomingMessage) {
             logger.info("PublicKey received: " + incomingMessage.getPayload());
