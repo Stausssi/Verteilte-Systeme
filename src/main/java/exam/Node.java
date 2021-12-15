@@ -39,10 +39,10 @@ public class Node implements Runnable {
     private Connection clientConnection;
 
     // Vars for primes
-    private String primesFile;
+    private static final String primesFile = "/primes10000.txt";
     public volatile ConcurrentHashMap<Integer, PrimeState> primeMap = new ConcurrentHashMap<>();
     private final ArrayList<String> primeList = new ArrayList<>();
-    private int workSize;
+    private static final int workSize = 150;
 
     // Callbacks for the prime worker. These are different for LEADER and FOLLOWER
     private static final HashMap<State, WorkerCallback> callbackMap = new HashMap<>();
@@ -820,14 +820,6 @@ public class Node implements Runnable {
         }
     }
 
-    public void setPrimesFile(String primesFile) {
-        this.primesFile = "/primes" + primesFile + ".txt";
-    }
-
-    public void setWorkSize(int workSize) {
-        this.workSize = workSize;
-    }
-
     // -------------------- [Connection related] -------------------- //
 
     /**
@@ -1102,8 +1094,6 @@ public class Node implements Runnable {
         Option address = new Option("i", "address", true, "Node IP-address");
         address.setRequired(true);
         options.addOption(address);
-        Option primeList = new Option("pr", "primes", true, "Number of how many primes to use for calculation (100/1000/10000/100000");
-        primeList.setRequired(true);
 
         // CLI options for cluster connection
         Option hostPort = new Option("hp", "host_port", true, "Port of Node to connect to");
@@ -1131,7 +1121,6 @@ public class Node implements Runnable {
         String nodePort = cl.getOptionValue("port");
         String nodeName = cl.getOptionValue("name");
         String nodeAddress = cl.getOptionValue("address");
-        String primes = cl.getOptionValue("primes");
 
         // Get parsed strings for cluster connection
         String host_Port = cl.getOptionValue("host_port");
@@ -1141,8 +1130,6 @@ public class Node implements Runnable {
         System.out.println("Cluster: " + host_Port + " " + host_Address);
 
         Node clusterNode = new Node(Integer.parseInt(nodePort), nodeName);
-        clusterNode.setPrimesFile(primes);
-        clusterNode.setWorkSize(Integer.parseInt(primes)/100);
         Thread nodeThread = new Thread(clusterNode);
         nodeThread.start();
         Thread.sleep(1000);
