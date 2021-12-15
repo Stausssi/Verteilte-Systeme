@@ -10,13 +10,15 @@ interface WorkerCallback {
     void resultFound(String p, String q);
 
     void workerFinished(String range);
+
+    void onError(Exception e);
 }
 
 public class PrimeWorker {
     private final String publicKey;
     private final ArrayList<String> primes;
     private final Logger logger;
-    private final WorkerCallback callbacks;
+    private WorkerCallback callbacks;
     private final RSAHelper rsaHelper = new RSAHelper();
 
     private String range;
@@ -40,9 +42,11 @@ public class PrimeWorker {
             int[] rangeArray = Arrays.stream(range.trim().split(",")).mapToInt(Integer::parseInt).toArray();
 
             // Loop over every prime in the array and combine it with every prime greater than that
+            try {
+
             for (int i = rangeArray[0]; i <= rangeArray[1]; ++i) {
                 String p = primes.get(i);
-                for(int j = primes.indexOf(p) + 1; j<primes.size();j++) {
+                for (int j = primes.indexOf(p) + 1; j < primes.size(); j++) {
                     String q = primes.get(j);
                     logger.finest("Combining" + p + "with" + q);
                     boolean valid = rsaHelper.isValid(p, q, publicKey);
@@ -60,6 +64,9 @@ public class PrimeWorker {
             }
 
             workerFinished(!stopWorking);
+            } catch (IndexOutOfBoundsException e) {
+                callbacks.onError(e);
+            }
         }
     }
 
@@ -100,5 +107,9 @@ public class PrimeWorker {
         } catch (InterruptedException e) {
             logger.warning("Exception while joining workerThread: " + e);
         }
+    }
+
+    public void updateCallbacks(WorkerCallback callbacks) {
+        this.callbacks = callbacks;
     }
 }

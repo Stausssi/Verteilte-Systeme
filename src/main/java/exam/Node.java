@@ -45,6 +45,68 @@ public class Node implements Runnable {
     private final ArrayList<String> primeList = new ArrayList<>();
     private static final int workSize = 150;
 
+    // Callbacks for the prime worker. These are different for LEADER and FOLLOWER
+    private static final HashMap<State, WorkerCallback> callbackMap = new HashMap<>();
+
+    {
+        callbackMap.put(State.FOLLOWER, new WorkerCallback() {
+            @Override
+            public void resultFound(String p, String q) {
+                // Notify the leader of the result
+                // Check for null in case the leader disconnected
+                if (leaderConnection != null) {
+                    addOutgoingMessage(leaderConnection, createMessage(leaderConnection.getName(), MessageType.PRIMES, p + "," + q));
+                }
+            }
+
+            @Override
+            public void workerFinished(String range) {
+                // Tell the leader this range is finished
+                if (leaderConnection != null) {
+                    addOutgoingMessage(leaderConnection, createMessage(leaderConnection.getName(), MessageType.WORK_STATE, range + ":" + Index.CLOSED));
+                }
+            }
+
+            @Override
+            public void onError(Exception e) {
+                logError("working on prime range", e, true);
+            }
+        });
+
+        // A Candidate has the same callbacks
+        callbackMap.put(State.CANDIDATE, callbackMap.get(State.FOLLOWER));
+
+        callbackMap.put(State.LEADER, new WorkerCallback() {
+            @Override
+            public void resultFound(String p, String q) {
+                // Create a dummy message to handle
+                communicationHandler.handlePrimeMessage(createMessage(
+                        clientConnection.getName(),
+                        MessageType.PRIMES,
+                        p + "," + q
+                ));
+            }
+
+            @Override
+            public void workerFinished(String range) {
+                // Set the state of the range to closed
+                communicationHandler.handleWorkStateMessage(createMessage(
+                        name,
+                        MessageType.WORK_STATE,
+                        range + ":" + Index.CLOSED
+                ), null);
+
+                // Distribute new work to myself
+                distributeWorkToMyself();
+            }
+
+            @Override
+            public void onError(Exception e) {
+                logError("working on prime range", e, true);
+            }
+        });
+    }
+
     // Concurrent data storage for connections and messages
     public volatile ConcurrentHashMap<String, Connection> connections = new ConcurrentHashMap<>();
     public volatile ConcurrentHashMap<Connection, ConcurrentLinkedQueue<Message>> outgoingMessages = new ConcurrentHashMap<>();
@@ -332,204 +394,34 @@ public class Node implements Runnable {
         private void parseMessage(Message incomingMessage, Connection connection) {
             switch (incomingMessage.getMessageType()) {
                 case RSA:
-                    logger.info("PublicKey received: " + incomingMessage.getPayload());
-
-                    // Save the public key
-                    publicKey = (String) incomingMessage.getPayload();
-
-                    // Create the prime worker instance
-                    primeWorker = new PrimeWorker(publicKey, primeList, new WorkerCallback() {
-                        @Override
-                        public void resultFound(String p, String q) {
-                            // Notify the leader of the result
-                            // Check for null in case the leader disconnected
-                            if (leaderConnection != null) {
-                                addOutgoingMessage(leaderConnection, createMessage(leaderConnection.getName(), MessageType.PRIMES, p + "," + q));
-                            }
-                        }
-
-                        @Override
-                        public void workerFinished(String range) {
-                            // Tell the leader this range is finished
-                            if (leaderConnection != null) {
-                                addOutgoingMessage(leaderConnection, createMessage(leaderConnection.getName(), MessageType.WORK_STATE, range + ":" + Index.CLOSED));
-                            }
-                        }
-                    }, logger);
-
-                    if (state == State.LEADER) {
-                        // Broadcast the public key
-                        broadcastMessages.add(incomingMessage);
-
-                        // Distribute the work packages after a second to ensure that the public key has arrived
-                        Timer distributeTimer = new Timer();
-                        distributeTimer.schedule(new TimerTask() {
-                            @Override
-                            public void run() {
-                                distributeWork = true;
-                            }
-                        }, 1000);
-                    }
+                    handleRSAMessage(incomingMessage);
                     break;
                 case PRIMES:
-                    if (state == State.LEADER) {
-                        distributeWork = false;
-                        logger.info("Forwarding primes to the client connection!");
-
-                        // Forward the primes to the Node connected to the Client, which will forward the received
-                        // primes to the client
-                        Message primeMessage = createMessage("Client", MessageType.PRIMES, incomingMessage.getPayload());
-
-                        // Check whether the client is connected to the leader
-                        if (isClientConnectedToMe()) {
-                            try {
-                                clientConnection.getMessageHandler().write(primeMessage);
-                            } catch (IOException e) {
-                                logError("Sending primes to client. Assuming he is gone...", e, false);
-                            }
-                        } else {
-                            addOutgoingMessage(clientConnection, primeMessage);
-                        }
-
-                        // Let everyone know that we are finished
-                        addBroadcastMessage(MessageType.FINISHED, "");
-
-                        // Also stop this node
-                        stopNode();
-                    } else if (isClientConnectedToMe()) {
-                        logger.info("Received Primes. Sending them to the Client now!");
-                        incomingMessage.setSender(name);
-
-                        // Send the primes to the client
-                        try {
-                            clientConnection.getMessageHandler().write(incomingMessage);
-                        } catch (IOException e) {
-                            logError("sending primes to the client!", e, false);
-                        }
-                    }
+                    handlePrimeMessage(incomingMessage);
                     break;
                 case RAFT_ELECTION:
-                    logger.info("Raft Election started by " + incomingMessage.getSender());
-
-                    // Reply to the candidate with whether we already voted.
-                    // Already voted -> false
-                    // Not voted -> true
-                    addOutgoingMessage(connection, createMessage(incomingMessage.getSender(), MessageType.RAFT_VOTE, !hasVoted));
-
-                    // The connection is a leader candidate
-                    connection.setState(State.CANDIDATE);
-
-                    if (!hasVoted) {
-                        hasVoted = true;
-                    }
+                    handleRaftElectionMessage(incomingMessage, connection);
                     break;
                 case RAFT_VOTE:
-                    if (state == State.CANDIDATE) {
-                        // Add one to the vote count if the node elected this node
-                        voteCount = (boolean) incomingMessage.getPayload() ? voteCount + 1 : voteCount;
-                        votesReceived++;
-
-                        // Check whether this node has enough votes
-                        if (voteCount > connections.size() / 2) {
-                            logger.info("Im the boss in town");
-
-                            state = State.LEADER;
-                            leaderConnection = null;
-
-                            // Distribute the work packages if a public key exists
-                            distributeWork = publicKey.length() > 0;
-
-                            // Start the heartbeat task
-                            raft.initLeaderHeartbeat();
-                        } else if (votesReceived == connections.size()) {
-                            logger.info("I lost the election");
-
-                            // Reset own state and values
-                            resetRaftElection();
-                        } else {
-                            break;
-                        }
-
-                        // Inform everyone of the new state
-                        addBroadcastMessage(MessageType.STATE, state);
-                    }
+                    handleRaftVoteMessage(incomingMessage);
                     break;
                 case RAFT_HEARTBEAT:
-                    logger.fine("Heartbeat received by " + incomingMessage.getSender());
-                    if (state == State.LEADER) {
-                        if (incomingMessage.getPayload() == State.FOLLOWER) {
-                            // Reset timer for node disconnection
-                            connection.setNodeTimeout(restartTimer(connection.getNodeTimeout(), new NodeTimeoutTask(connection) {
-                                @Override
-                                public void run() {
-                                    if (nodeRunning) {
-                                        handleNodeTimeout(this.node);
-                                    }
-                                }
-                            }, Raft.timeoutTolerance));
-                        }
-                    } else {
-                        if (incomingMessage.getPayload() == State.LEADER) {
-                            // Reset timer for reelection
-                            leaderTimeout = restartTimer(leaderTimeout, new NodeTimeoutTask(connection) {
-                                @Override
-                                public void run() {
-                                    if (nodeRunning) {
-                                        handleNodeTimeout(this.node);
-                                    }
-                                }
-                            }, Raft.timeoutTolerance);
-
-                            // Send heartbeat back
-                            addOutgoingMessage(connection, createMessage(incomingMessage.getSender(), MessageType.RAFT_HEARTBEAT, state));
-                        }
-                    }
+                    handleRaftHeartbeatMessage(incomingMessage, connection);
                     break;
                 case STATE:
-                    logger.info("State of " + connection.getName() + " changed to " + incomingMessage.getPayload());
-
-                    // Grab the new state
-                    State incomingState = (State) incomingMessage.getPayload();
-                    connection.setState(incomingState);
-
-                    if (incomingState == State.LEADER) {
-                        // Save leader connection to variable
-                        leaderConnection = connection;
-
-                        // Reset election stuff
-                        resetRaftElection();
-                    }
+                    handleStateMessage(incomingMessage, connection);
                     break;
                 case WORK:
-                    logger.info("Received work package: " + incomingMessage.getPayload());
-
-                    // Tell the leader this Node will work on the range, if there is no other task running
-                    if (leaderConnection != null && primeWorker != null && primeWorker.startWorking((String) incomingMessage.getPayload())) {
-                        addOutgoingMessage(leaderConnection, createMessage(leaderConnection.getName(), MessageType.WORK_STATE, incomingMessage.getPayload() + ":" + Index.WORKING));
-                    }
+                    handleWorkMessage(incomingMessage);
                     break;
                 case WORK_STATE:
-                    // Get the range and new State
-                    String[] information = ((String) incomingMessage.getPayload()).split(":");
-                    int[] range = Arrays.stream(information[0].trim().split(",")).mapToInt(Integer::parseInt).toArray();
-                    Index newState = Index.valueOf(information[1]);
-
-                    // Update the state of the primes
-                    updatePrimeState(range, newState, connection);
+                    handleWorkStateMessage(incomingMessage, connection);
                     break;
                 case CLIENT_CONNECTION:
-                    // Only update the client connection if there is none yet or the client is connected to a different node
-                    if (!isClientConnectedToMe()) {
-                        clientConnection = connections.get((String) incomingMessage.getPayload());
-
-                        // TODO: Change logging level to INFO
-                        logger.warning("Client is connected to " + clientConnection.getName());
-                    }
+                    handleClientConnectionMessage(incomingMessage);
                     break;
                 case DISCONNECT:
-                    logger.info("Node with key " + incomingMessage.getPayload() + " disconnected!");
-
-                    handleNodeTimeout(connections.get((String) incomingMessage.getPayload()));
+                    handleDisconnectMessage(incomingMessage);
                     break;
                 case FINISHED:
                     stopNode();
@@ -539,16 +431,214 @@ public class Node implements Runnable {
                     break;
             }
         }
+
+        private void handleRSAMessage(Message incomingMessage) {
+            logger.info("PublicKey received: " + incomingMessage.getPayload());
+
+            // Save the public key
+            publicKey = (String) incomingMessage.getPayload();
+
+            // Create the prime worker
+            // Use the callbacks of the role
+            primeWorker = new PrimeWorker(publicKey, primeList, callbackMap.get(state), logger);
+
+            if (state == State.LEADER) {
+                // Broadcast the public key
+                broadcastMessages.add(incomingMessage);
+
+                // Distribute the work packages after a second to ensure that the public key has arrived
+                Timer distributeTimer = new Timer();
+                distributeTimer.schedule(new TimerTask() {
+                    @Override
+                    public void run() {
+                        distributeWork = true;
+                    }
+                }, 1000);
+
+                // Start Working myself
+                distributeWorkToMyself();
+            }
+        }
+
+        private void handleDisconnectMessage(Message incomingMessage) {
+            logger.info("Node with key " + incomingMessage.getPayload() + " disconnected!");
+
+            handleNodeTimeout(connections.get((String) incomingMessage.getPayload()));
+        }
+
+        private void handleClientConnectionMessage(Message incomingMessage) {
+            // Only update the client connection if there is none yet or the client is connected to a different node
+            if (!isClientConnectedToMe()) {
+                clientConnection = connections.get((String) incomingMessage.getPayload());
+
+                // TODO: Change logging level to INFO
+                logger.warning("Client is connected to " + clientConnection.getName());
+            }
+        }
+
+        private void handleWorkStateMessage(Message incomingMessage, Connection connection) {
+            // Get the range and new State
+            String[] information = ((String) incomingMessage.getPayload()).split(":");
+            int[] range = Arrays.stream(information[0].trim().split(",")).mapToInt(Integer::parseInt).toArray();
+            Index newState = Index.valueOf(information[1]);
+
+            // Update the state of the primes
+            updatePrimeState(range, newState, connection);
+        }
+
+        private void handleWorkMessage(Message incomingMessage) {
+            logger.info("Received work package: " + incomingMessage.getPayload());
+
+            // Tell the leader this Node will work on the range, if there is no other task running
+            if (leaderConnection != null && primeWorker != null && primeWorker.startWorking((String) incomingMessage.getPayload())) {
+                addOutgoingMessage(leaderConnection, createMessage(leaderConnection.getName(), MessageType.WORK_STATE, incomingMessage.getPayload() + ":" + Index.WORKING));
+            }
+        }
+
+        private void handleStateMessage(Message incomingMessage, Connection connection) {
+            logger.info("State of " + connection.getName() + " changed to " + incomingMessage.getPayload());
+
+            // Grab the new state
+            State incomingState = (State) incomingMessage.getPayload();
+            connection.setState(incomingState);
+
+            if (incomingState == State.LEADER) {
+                // Save leader connection to variable
+                leaderConnection = connection;
+
+                // Reset election stuff
+                resetRaftElection();
+            }
+        }
+
+        private void handleRaftHeartbeatMessage(Message incomingMessage, Connection connection) {
+            logger.fine("Heartbeat received by " + incomingMessage.getSender());
+            if (state == State.LEADER) {
+                if (incomingMessage.getPayload() == State.FOLLOWER) {
+                    // Reset timer for node disconnection
+                    connection.setNodeTimeout(restartTimer(connection.getNodeTimeout(), new NodeTimeoutTask(connection) {
+                        @Override
+                        public void run() {
+                            if (nodeRunning) {
+                                handleNodeTimeout(this.node);
+                            }
+                        }
+                    }, Raft.timeoutTolerance));
+                }
+            } else {
+                if (incomingMessage.getPayload() == State.LEADER) {
+                    // Reset timer for reelection
+                    leaderTimeout = restartTimer(leaderTimeout, new NodeTimeoutTask(connection) {
+                        @Override
+                        public void run() {
+                            if (nodeRunning) {
+                                handleNodeTimeout(this.node);
+                            }
+                        }
+                    }, Raft.timeoutTolerance);
+
+                    // Send heartbeat back
+                    addOutgoingMessage(connection, createMessage(incomingMessage.getSender(), MessageType.RAFT_HEARTBEAT, state));
+                }
+            }
+        }
+
+        private void handleRaftVoteMessage(Message incomingMessage) {
+            if (state == State.CANDIDATE) {
+                // Add one to the vote count if the node elected this node
+                voteCount = (boolean) incomingMessage.getPayload() ? voteCount + 1 : voteCount;
+                votesReceived++;
+
+                // Check whether this node has enough votes
+                if (voteCount > connections.size() / 2) {
+                    logger.info("Im the boss in town");
+
+                    state = State.LEADER;
+                    leaderConnection = null;
+
+                    // Distribute the work packages if a public key exists
+                    distributeWork = publicKey.length() > 0;
+
+                    // Start the heartbeat task
+                    raft.initLeaderHeartbeat();
+
+                    // Update the callbacks of the prime worker and start working
+                    if (primeWorker != null) {
+                        primeWorker.updateCallbacks(callbackMap.get(state));
+                        distributeWorkToMyself();
+                    }
+                } else if (votesReceived == connections.size()) {
+                    logger.info("I lost the election");
+
+                    // Reset own state and values
+                    resetRaftElection();
+                } else {
+                    return;
+                }
+
+                // Inform everyone of the new state
+                addBroadcastMessage(MessageType.STATE, state);
+            }
+        }
+
+        private void handleRaftElectionMessage(Message incomingMessage, Connection connection) {
+            logger.info("Raft Election started by " + incomingMessage.getSender());
+
+            // Reply to the candidate with whether we already voted.
+            // Already voted -> false
+            // Not voted -> true
+            addOutgoingMessage(connection, createMessage(incomingMessage.getSender(), MessageType.RAFT_VOTE, !hasVoted));
+
+            // The connection is a leader candidate
+            connection.setState(State.CANDIDATE);
+
+            if (!hasVoted) {
+                hasVoted = true;
+            }
+        }
+
+        private void handlePrimeMessage(Message incomingMessage) {
+            if (state == State.LEADER) {
+                distributeWork = false;
+                logger.info("Forwarding primes to the client connection!");
+
+                // Forward the primes to the Node connected to the Client, which will forward the received
+                // primes to the client
+                Message primeMessage = createMessage("Client", MessageType.PRIMES, incomingMessage.getPayload());
+
+                // Check whether the client is connected to the leader
+                if (isClientConnectedToMe()) {
+                    try {
+                        clientConnection.getMessageHandler().write(primeMessage);
+                    } catch (IOException e) {
+                        logError("Sending primes to client. Assuming he is gone...", e, false);
+                    }
+                } else {
+                    addOutgoingMessage(clientConnection, primeMessage);
+                }
+
+                // Let everyone know that we are finished
+                addBroadcastMessage(MessageType.FINISHED, "");
+
+                // Also stop this node
+                stopNode();
+            } else if (isClientConnectedToMe()) {
+                logger.info("Received Primes. Sending them to the Client now!");
+                incomingMessage.setSender(name);
+
+                // Send the primes to the client
+                try {
+                    clientConnection.getMessageHandler().write(incomingMessage);
+                } catch (IOException e) {
+                    logError("sending primes to the client!", e, false);
+                }
+            }
+        }
     }
 
     // -------------------- [Primes related] -------------------- //
 
-    /**
-     * Distributes a working range to the given connection.
-     *
-     * @param connection the connection object to distribute work to
-     */
-    private void distributeWork(Connection connection) {
+    private int[] getNextWorkingRange() {
         int startRange = 0;
         while (primeMap.get(startRange) != Index.OPEN && primeMap.get(startRange) != null) {
             ++startRange;
@@ -557,40 +647,14 @@ public class Node implements Runnable {
         if (primeMap.get(startRange) != null) {
             int endRange = startRange + workSize - 1;
 
-            // Update the working packages
+            // Adjust the range if its bigger than the size
             if (endRange >= primeMap.size()) {
                 endRange = primeMap.size() - 1;
 
                 logger.warning(startRange + " + " + (workSize - 1) + "is bigger than " + (primeMap.size() - 1) + "! Only working from " + startRange + " to " + endRange);
             }
 
-            modifyPrimesMap(startRange, endRange, Index.TENTATIVE);
-
-            // The node has 5 seconds to confirm they're working on it
-            int finalStartRange = startRange;
-            int finalEndRange = endRange;
-
-            Timer workTimeout = new Timer();
-            TimerTask workTimeoutTask = new NodeTimeoutTask(connection) {
-                @Override
-                public void run() {
-                    logger.info(this.node.getName() + " failed to response in time!");
-                    this.node.setShouldBeWorking(false);
-
-                    modifyPrimesMap(finalStartRange, finalEndRange, Index.OPEN);
-                }
-            };
-            workTimeout.schedule(workTimeoutTask, 5000);
-            connection.setWorkTimeout(workTimeout);
-
-            // Convert the range to a string
-            String stringRange = createRangeString(startRange, endRange);
-
-            // Force the Node to work
-            addOutgoingMessage(connection, createMessage(connection.getName(), MessageType.WORK, stringRange));
-            connection.setShouldBeWorking(true);
-
-            logger.info("Distributed work [" + stringRange + "] to " + connection.getName());
+            return new int[]{startRange, endRange};
         } else {
             logger.info("Every package distributed!");
             distributeWork = false;
@@ -600,6 +664,61 @@ public class Node implements Runnable {
 
             // Also stop this node
             stopNode();
+
+            return new int[]{-1};
+        }
+    }
+
+    /**
+     * Distributes a working range to the given connection.
+     *
+     * @param connection the connection object to distribute work to
+     */
+    private void distributeWork(Connection connection) {
+        // Get the next range
+        int[] nextRange = getNextWorkingRange();
+
+        if (nextRange[0] >= 0) {
+            // Update the state
+            modifyPrimesMap(nextRange, Index.TENTATIVE);
+
+            // The node has 5 seconds to confirm they're working on it
+            Timer workTimeout = new Timer();
+            TimerTask workTimeoutTask = new NodeTimeoutTask(connection) {
+                @Override
+                public void run() {
+                    logger.info(this.node.getName() + " failed to response in time!");
+                    this.node.setShouldBeWorking(false);
+
+                    modifyPrimesMap(nextRange[0], nextRange[1], Index.OPEN);
+                }
+            };
+            workTimeout.schedule(workTimeoutTask, 5000);
+            connection.setWorkTimeout(workTimeout);
+
+            // Convert the range to a string
+            String stringRange = createRangeString(nextRange);
+
+            // Force the Node to work
+            addOutgoingMessage(connection, createMessage(connection.getName(), MessageType.WORK, stringRange));
+            connection.setShouldBeWorking(true);
+
+            logger.info("Distributed work [" + stringRange + "] to " + connection.getName());
+        }
+    }
+
+    private void distributeWorkToMyself() {
+        // Get the next range
+        int[] nextRange = getNextWorkingRange();
+
+        if (nextRange[0] >= 0) {
+            // Update the state to working directly
+            modifyPrimesMap(nextRange, Index.WORKING);
+
+            // Start working
+            primeWorker.startWorking(createRangeString(nextRange));
+
+            logger.info("Distributed " + Arrays.toString(nextRange) + " to myself.");
         }
     }
 
@@ -620,10 +739,12 @@ public class Node implements Runnable {
             // Notify everyone of the change
             addBroadcastMessage(MessageType.WORK_STATE, createPrimeStateString(range, state));
 
-            stopTimer(connection.getWorkTimeout());
+            if (connection != null) {
+                stopTimer(connection.getWorkTimeout());
 
-            connection.setShouldBeWorking(state == Index.WORKING);
-            connection.setWorkRange(state == Index.WORKING ? range : null);
+                connection.setShouldBeWorking(state == Index.WORKING);
+                connection.setWorkRange(state == Index.WORKING ? range : null);
+            }
 
             if (!distributeWork) {
                 // Let everyone know that we are finished

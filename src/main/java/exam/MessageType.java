@@ -30,9 +30,6 @@ public enum MessageType {
     // A message of the type RAFT_VOTE is send to the node which started the election and contains whether he has our vote.
     RAFT_VOTE("vote"),
 
-    // A message of the type REQUEST contains a request. The type of the request is specified in the payload.
-    REQUEST("request"),
-
     // A message of the type RSA contains the public key information from the Client
     RSA("rsa"),
 
