@@ -24,10 +24,6 @@ test {
     useJUnitPlatform()
 }
 
-task node(type: application) {
-    mainClassName = "Node"
-}
-
-task client(type: application) {
-    mainClassName = "Client"
+application {
+    mainClassName = project.hasProperty("main") ? "exam." + project.getProperty("main") : "exam.Node"
 }
