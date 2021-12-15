@@ -837,17 +837,17 @@ public class Node implements Runnable {
             BufferedReader reader = new BufferedReader(streamReader);
 
             // Go over every line
-            String currentLine;
+            String currentLine = reader.readLine();
             int index = -1;
-            do {
-                currentLine = reader.readLine();
-
+            while (currentLine != null) {
                 // Save the line
                 primeList.add(currentLine);
                 primeMap.put(++index, PrimeState.OPEN);
-            } while (currentLine != null);
 
-            logger.info("Successfully read " + index + " primes!");
+                currentLine = reader.readLine();
+            }
+
+            logger.info("Successfully read " + primeMap.size() + " primes!");
 
             // Close the streams
             reader.close();
@@ -973,7 +973,7 @@ public class Node implements Runnable {
      * @param critical        Whether this error is critical to the Nodes' functionality
      */
     public void logError(String errorOccurrence, Exception e, boolean critical) {
-        logger.log(critical ? Level.SEVERE : Level.WARNING, "Encountered an error while " + errorOccurrence + ": " + e.toString());
+        logger.log(critical ? Level.SEVERE : Level.WARNING, "Encountered " + e.toString() + " while " + errorOccurrence + ": " + e.getMessage());
 
         if (critical) {
             stopNode();
