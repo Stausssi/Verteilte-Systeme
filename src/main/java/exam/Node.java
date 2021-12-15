@@ -799,6 +799,13 @@ public class Node implements Runnable {
         // Change the states of the indexes
         modifyPrimesMap(range, state);
 
+        // Update the closed index to improve performance on work distribution
+        if (state == PrimeState.CLOSED) {
+            previousClosedIndex = range[1];
+        } else if (state == PrimeState.OPEN) {
+            previousClosedIndex = range[0] - 1;
+        }
+
         if (this.state == State.LEADER) {
             // Notify everyone of the change
             addBroadcastMessage(MessageType.WORK_STATE, createPrimeStateString(range, state));
@@ -809,10 +816,6 @@ public class Node implements Runnable {
 
                 connection.setShouldBeWorking(state == PrimeState.WORKING);
                 connection.setWorkRange(state == PrimeState.WORKING ? range : null);
-            }
-
-            if (state == PrimeState.CLOSED) {
-                previousClosedIndex = range[1];
             }
 
             // distributeWork is false, if the last index was distributed
