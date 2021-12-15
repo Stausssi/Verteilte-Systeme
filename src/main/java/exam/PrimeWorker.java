@@ -44,7 +44,7 @@ public class PrimeWorker {
     private final RSAHelper rsaHelper = new RSAHelper();
 
     private String range;
-    private boolean isRunning = false;
+    protected boolean isRunning = false;
     private Thread workerThread;
     private WorkerThread worker;
 

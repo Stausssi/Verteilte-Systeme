@@ -826,12 +826,17 @@ public class Node implements Runnable {
                 connection.setWorkRange(state == PrimeState.WORKING ? range : null);
             }
 
-            // distributeWork is false, if the last index was distributed
+            // distributeWork is false, if every index was distributed
             if (!distributeWork) {
-                // Check if every index is CLOSED
-                boolean everythingDone = true;
+                // Check if every worker is idle
+                boolean everythingDone = !primeWorker.isRunning;
                 for (Connection workerNode : connections.values()) {
                     everythingDone = everythingDone && !workerNode.isWorking();
+
+                    if (!everythingDone) {
+                        logger.info(workerNode.getName() + "is still working!");
+                        break;
+                    }
                 }
 
                 if (everythingDone) {
