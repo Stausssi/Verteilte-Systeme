@@ -24,6 +24,10 @@ public class Client {
     private static final HashMap<Integer, String> cipherMap;
     private static final HashMap<Integer, String> keyMap;
 
+    //For cluster connection
+    private String address;
+    private int port;
+
     static {
         // Initialize the maps containing the cipher text and public key depending on the number of primes
         cipherMap = new HashMap<>();
@@ -54,7 +58,7 @@ public class Client {
 
         try {
             // Add the default node to the connections
-            otherConnections.add(new AbstractMap.SimpleEntry<>(InetAddress.getByName("192.168.178.33"), 1234));
+            otherConnections.add(new AbstractMap.SimpleEntry<>(InetAddress.getByName(address), port));
         } catch (UnknownHostException e) {
             e.printStackTrace();
         }
@@ -171,12 +175,17 @@ public class Client {
         Client client = new Client();
 
 
-        // CLI options to create Node
+        // CLI options to create Client
         Options options = new Options();
         Option primeList = new Option("pr", "primes", true, "Number of how many primes to use for calculation (100/1000/10000/100000)");
         primeList.setRequired(true);
         options.addOption(primeList);
-
+        Option clusterAddress = new Option("i", "caddress", true, "Define address of a Cluster node to address");
+        clusterAddress.setRequired(true);
+        options.addOption(clusterAddress);
+        Option clusterPort = new Option("p", "cport", true,"Port of Node in cluster to connect to");
+        clusterPort.setRequired(true);
+        options.addOption(clusterPort);
 
         // Command parsing
         CommandLineParser parser = new DefaultParser();
@@ -192,8 +201,11 @@ public class Client {
             System.exit(0);
         }
 
-        // Get parsed strings for node
+        // Get parsed strings for client
         String primesNumber = cl.getOptionValue("primes");
+        String port = cl.getOptionValue("cport");
+        client.address = cl.getOptionValue("caddress");
+        client.port = Integer.parseInt(port);
         client.primeCount = Integer.parseInt(primesNumber);
         client.encrypted = cipherMap.get(client.primeCount);
         client.publicKey = keyMap.get(client.primeCount);
