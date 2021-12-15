@@ -53,8 +53,8 @@ class Raft implements Runnable {
 
         logger.info("Raft started!");
 
-        // Create random timeout for thread for election between 130 and 300 milliseconds
-        long randomTimeout = (long) (Math.random() * (300 - 130 + 1) + 130);
+        // Create random timeout for thread for election between 130 and 1000 milliseconds
+        long randomTimeout = (long) (Math.random() * (1000 - 130 + 1) + 130);
         electionTimeout.schedule(timeoutTask, 2000, randomTimeout);
     }
 

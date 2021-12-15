@@ -48,7 +48,7 @@ public class Node implements Runnable {
     public volatile ConcurrentHashMap<Integer, PrimeState> primeMap = new ConcurrentHashMap<>();
     private final ArrayList<String> primeList = new ArrayList<>();
     private int workSize;
-    private int previousClosedIndex = 0;
+    private int previousWorkIndex = 0;
 
     // Callbacks for the prime worker. These are different for LEADER and FOLLOWER
     private static final HashMap<State, WorkerCallback> callbackMap = new HashMap<>();
@@ -704,7 +704,7 @@ public class Node implements Runnable {
     private int[] getNextWorkingRange() {
         // Get the starting point of the range
         // Start at the index of the last closed range
-        int startRange = previousClosedIndex;
+        int startRange = previousWorkIndex;
         while (primeMap.get(startRange) != PrimeState.OPEN && primeMap.get(startRange) != null) {
             ++startRange;
         }
@@ -808,10 +808,10 @@ public class Node implements Runnable {
         modifyPrimesMap(range, state);
 
         // Update the closed index to improve performance on work distribution
-        if (state == PrimeState.CLOSED) {
-            previousClosedIndex = range[1];
+        if (state == PrimeState.WORKING) {
+            previousWorkIndex = range[1];
         } else if (state == PrimeState.OPEN) {
-            previousClosedIndex = range[0] - 1;
+            previousWorkIndex = range[0] - 1;
         }
 
         if (this.state == State.LEADER) {
@@ -830,12 +830,8 @@ public class Node implements Runnable {
             if (!distributeWork) {
                 // Check if every index is CLOSED
                 boolean everythingDone = true;
-                for (PrimeState primeState : primeMap.values()) {
-                    everythingDone = everythingDone && primeState == PrimeState.CLOSED;
-
-                    if (!everythingDone) {
-                        logger.info("There are still packages missing!");
-                    }
+                for (Connection workerNode : connections.values()) {
+                    everythingDone = everythingDone && !workerNode.isWorking();
                 }
 
                 if (everythingDone) {
@@ -844,6 +840,8 @@ public class Node implements Runnable {
 
                     // Also stop this node
                     stopNode();
+                } else {
+                    logger.info("There are still nodes working!");
                 }
             }
         }
