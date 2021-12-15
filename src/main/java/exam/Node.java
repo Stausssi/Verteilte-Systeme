@@ -95,8 +95,10 @@ public class Node implements Runnable {
                         range + ":" + PrimeState.CLOSED
                 ), null);
 
-                // Distribute new work to myself
-                distributeWorkToMyself();
+                if (distributeWork) {
+                    // Distribute new work to myself
+                    distributeWorkToMyself();
+                }
             }
 
             @Override
@@ -371,6 +373,31 @@ public class Node implements Runnable {
                         handleNodeTimeout(c);
                     }
                 }
+
+                if (clientConnection != null && isClientConnectedToMe()) {
+                    ObjectMessageHandler clientHandler = clientConnection.getMessageHandler();
+                    try {
+                        if (clientHandler.isMessageAvailable()) {
+                            Message message = clientHandler.read();
+                            if (message.getMessageType() == MessageType.PRIMES_RECEIVED) {
+                                logger.info("The Client received the primes!");
+
+                                if (state == State.LEADER) {
+                                    // Let everyone know that we are finished
+                                    addBroadcastMessage(MessageType.FINISHED, "");
+
+                                    // Also stop this node
+                                    stopNode();
+                                } else {
+                                    // Forward to the leader
+                                    addOutgoingMessage(leaderConnection, message);
+                                }
+                            }
+                        }
+                    } catch (IOException e) {
+                        logError("reading from the client socket", e, false);
+                    }
+                }
             }
             logger.info("CommunicationHandler shutdown!");
         }
@@ -444,16 +471,20 @@ public class Node implements Runnable {
                 broadcastMessages.add(incomingMessage);
 
                 // Distribute the work packages after a second to ensure that the public key has arrived
-                Timer distributeTimer = new Timer();
-                distributeTimer.schedule(new TimerTask() {
+                delayExecution(new TimerTask() {
                     @Override
                     public void run() {
                         distributeWork = true;
                     }
                 }, 1000);
 
-                // Start Working myself
-                distributeWorkToMyself();
+                delayExecution(new TimerTask() {
+                    @Override
+                    public void run() {
+                        // Start Working myself
+                        distributeWorkToMyself();
+                    }
+                }, 2000);
             }
         }
 
@@ -611,6 +642,7 @@ public class Node implements Runnable {
         private void handlePrimeMessage(Message incomingMessage) {
             if (state == State.LEADER) {
                 distributeWork = false;
+
                 logger.info("Forwarding primes to the client connection!");
 
                 // Forward the primes to the Node connected to the Client, which will forward the received
@@ -627,12 +659,6 @@ public class Node implements Runnable {
                 } else {
                     addOutgoingMessage(clientConnection, primeMessage);
                 }
-
-                // Let everyone know that we are finished
-                addBroadcastMessage(MessageType.FINISHED, "");
-
-                // Also stop this node
-                stopNode();
             } else if (isClientConnectedToMe()) {
                 logger.info("Received Primes. Sending them to the Client now!");
                 incomingMessage.setSender(name);
@@ -675,12 +701,6 @@ public class Node implements Runnable {
         } else {
             logger.info("Every package distributed!");
             distributeWork = false;
-
-            // Let everyone know that we are finished
-            addBroadcastMessage(MessageType.FINISHED, "");
-
-            // Also stop this node
-            stopNode();
 
             return new int[]{-1};
         }
@@ -766,14 +786,6 @@ public class Node implements Runnable {
 
                 connection.setShouldBeWorking(state == PrimeState.WORKING);
                 connection.setWorkRange(state == PrimeState.WORKING ? range : null);
-            }
-
-            if (!distributeWork) {
-                // Let everyone know that we are finished
-                addBroadcastMessage(MessageType.FINISHED, "");
-
-                // Also stop this node
-                stopNode();
             }
         }
     }
@@ -1126,10 +1138,10 @@ public class Node implements Runnable {
         String host_Port = cl.getOptionValue("host_port");
         String host_Address = cl.getOptionValue("host_address");
 
-        System.out.println("Node: " + nodePort + " " + nodeName + " " + nodeAddress);
+        System.out.println("Node: " + nodePort + " " + nodeName + " " + InetAddress.getByName(nodeAddress));
         System.out.println("Cluster: " + host_Port + " " + host_Address);
 
-        Node clusterNode = new Node(Integer.parseInt(nodePort), nodeName);
+        Node clusterNode = new Node(InetAddress.getByName(nodeAddress), Integer.parseInt(nodePort), nodeName);
         Thread nodeThread = new Thread(clusterNode);
         nodeThread.start();
         Thread.sleep(1000);

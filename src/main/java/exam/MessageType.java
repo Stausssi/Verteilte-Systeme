@@ -43,6 +43,9 @@ public enum MessageType {
     // A message of the type PRIMES contains p and q needed for the RSA decryption
     PRIMES("primes"),
 
+    // A message of the type PRIMES_RECEIVED is sent by the client to acknowledge the primes
+    PRIMES_RECEIVED("primes_received"),
+
     // A message of the type FINISHED notifies everyone that the task was finished
     FINISHED("finished"),
 

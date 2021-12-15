@@ -173,6 +173,17 @@ public final class Utility {
         return timer;
     }
 
+    /**
+     * Delays the execution of the given task by the given delay.
+     *
+     * @param task the task to execute delayed
+     * @param delay the delay in ms
+     */
+    public static void delayExecution(TimerTask task, int delay) {
+        Timer delayedTimer = new Timer();
+        delayedTimer.schedule(task, delay);
+    }
+
     // -------------------- [Logging] -------------------- //
 
     /**

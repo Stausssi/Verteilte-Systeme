@@ -53,7 +53,7 @@ public class Client {
 
         try {
             // Add the default node to the connections
-            otherConnections.add(new AbstractMap.SimpleEntry<>(InetAddress.getByName("localhost"), 1234));
+            otherConnections.add(new AbstractMap.SimpleEntry<>(InetAddress.getByName("192.168.178.33"), 1234));
         } catch (UnknownHostException e) {
             e.printStackTrace();
         }
@@ -138,12 +138,21 @@ public class Client {
                                 logger.info("Primes dont fit!");
                             }
 
+                            logger.info("Closing connection to the cluster!");
+
+                            // Let the cluster know that the client received the primes
+                            messageHandler.write(createMessage(
+                                    "Cluster", MessageType.PRIMES_RECEIVED, ""
+                            ));
+
                             cluster.close();
                         }
                     }
                 }
             } catch (IOException e) {
-                logger.warning("Exception while communicating with the cluster: " + e);
+                if (!primesFound) {
+                    logger.warning("Exception while communicating with the cluster: " + e);
+                }
             }
         } while (!otherConnections.isEmpty() && !primesFound);
 
