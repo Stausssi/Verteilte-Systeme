@@ -1,6 +1,7 @@
 package exam;
 
 import eu.boxwork.dhbw.examhelpers.rsa.RSAHelper;
+import org.apache.commons.cli.*;
 
 import java.io.IOException;
 import java.net.InetAddress;
@@ -18,7 +19,7 @@ import static exam.Utility.initializeLogger;
 public class Client {
     private final Logger logger = initializeLogger("Client");
 
-    private static final int primeCount = 10000;
+    private int primeCount;
 
     private static final HashMap<Integer, String> cipherMap;
     private static final HashMap<Integer, String> keyMap;
@@ -38,8 +39,8 @@ public class Client {
         keyMap.put(100000, "174351747363332207690026372465051206619");
     }
 
-    private static final String encrypted = cipherMap.get(primeCount);
-    private static final String publicKey = keyMap.get(primeCount);
+    private String encrypted;
+    private String publicKey;
 
     private final RSAHelper helper = new RSAHelper();
     private final Stack<Map.Entry<InetAddress, Integer>> otherConnections = new Stack<>();
@@ -168,6 +169,35 @@ public class Client {
 
     public static void main(String[] args) {
         Client client = new Client();
+
+
+        // CLI options to create Node
+        Options options = new Options();
+        Option primeList = new Option("pr", "primes", true, "Number of how many primes to use for calculation (100/1000/10000/100000)");
+        primeList.setRequired(true);
+        options.addOption(primeList);
+
+
+        // Command parsing
+        CommandLineParser parser = new DefaultParser();
+        HelpFormatter formatter = new HelpFormatter();
+        CommandLine cl = null;
+
+        try {
+            cl = parser.parse(options, args);
+
+        } catch (ParseException e) {
+            System.out.println(e.getMessage());
+            formatter.printHelp("Invalid argument list", options);
+            System.exit(0);
+        }
+
+        // Get parsed strings for node
+        String primesNumber = cl.getOptionValue("primes");
+        client.primeCount = Integer.parseInt(primesNumber);
+        client.encrypted = cipherMap.get(client.primeCount);
+        client.publicKey = keyMap.get(client.primeCount);
         client.work();
+
     }
 }
