@@ -380,8 +380,6 @@ public class Node implements Runnable {
                         if (clientHandler.isMessageAvailable()) {
                             Message message = clientHandler.read();
                             if (message.getMessageType() == MessageType.PRIMES_RECEIVED) {
-                                logger.info("The Client received the primes!");
-
                                 handlePrimesReceivedMessage(message);
                             }
                         }
@@ -451,6 +449,8 @@ public class Node implements Runnable {
          */
 
         private void handlePrimesReceivedMessage(Message incomingMessage) {
+            logger.info("The Client received the primes!");
+
             if (state == State.LEADER) {
                 // Let everyone know that we are finished
                 addBroadcastMessage(MessageType.FINISHED, "");
@@ -1011,11 +1011,13 @@ public class Node implements Runnable {
      */
     private void handleNodeTimeout(Connection connection) {
         // Check whether the connection is in the hash map
-        if (!connections.containsValue(connection)) {
-            try {
-                connection = connections.get(createConnectionKey(connection));
-            } catch (NullPointerException e) {
-                logger.warning("Passed connection was null!");
+        if (connection != null) {
+            if (!connections.containsValue(connection)) {
+                try {
+                    connection = connections.get(createConnectionKey(connection));
+                } catch (NullPointerException e) {
+                    logger.warning("Passed connection was null!");
+                }
             }
         }
 
@@ -1178,7 +1180,7 @@ public class Node implements Runnable {
                 break;
         }
 
-		// Start the Node
+        // Start the Node
         Thread nodeThread = new Thread(clusterNode);
         nodeThread.start();
 
