@@ -21,18 +21,16 @@ public class Client {
     private static final int primeCount = 10000;
 
     private static final HashMap<Integer, String> cipherMap;
+    private static final HashMap<Integer, String> keyMap;
 
     static {
+        // Initialize the maps containing the cipher text and public key depending on the number of primes
         cipherMap = new HashMap<>();
         cipherMap.put(100, "b4820013b07bf8513ee59a905039fb631203c8b38ca3d59b475b4e4e092d3979");
         cipherMap.put(1000, "55708f0326a16870b299f913984922c7b5b37725ce0f6670d963adc0dc3451c8");
         cipherMap.put(10000, "a9fc180908ad5f60556fa42b3f76e30f48bcddfad906f312b6ca429f25cebbd0");
         cipherMap.put(100000, "80f7b3b84e8354b36386c6833fe5c113445ce74cd30a21236a5c70f5fdca7208");
-    }
 
-    private static final HashMap<Integer, String> keyMap;
-
-    static {
         keyMap = new HashMap<>();
         keyMap.put(100, "298874689697528581074572362022003292763");
         keyMap.put(1000, "249488851623337787855631201847950907117");
@@ -47,6 +45,9 @@ public class Client {
     private final Stack<Map.Entry<InetAddress, Integer>> otherConnections = new Stack<>();
     private boolean primesFound = false;
 
+    /**
+     * Main loop for the client.
+     */
     private void work() {
         logger.info("Started the client!");
 
@@ -86,6 +87,8 @@ public class Client {
                 Message welcome = messageHandler.read();
                 if (welcome.getMessageType() == MessageType.WELCOME) {
                     logger.fine("Received cluster welcome!");
+
+                    // Save the given node connections
                     for (String connectionInformation : ((String) welcome.getPayload()).split(",")) {
                         if (connectionInformation.length() > 0) {
                             String[] connection = connectionInformation.split(":");
@@ -115,7 +118,10 @@ public class Client {
                     // Now wait for the cluster to solve the key
                     while (!cluster.isClosed()) {
                         Message incomingMessage = messageHandler.read();
+
+                        // Only react to message of the type PRIMES
                         if (incomingMessage.getMessageType() == MessageType.PRIMES) {
+                            // Get the primes which should decrypt the text
                             String[] primes = ((String) incomingMessage.getPayload()).replace(" ", "").split(",");
                             logger.info("Received the primes " + Arrays.toString(primes) + " from the cluster!");
 

@@ -4,7 +4,6 @@ import org.apache.commons.cli.*;
 import tasks.io.InputOutput;
 
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.*;
 import java.util.*;
@@ -41,7 +40,7 @@ public class Node implements Runnable {
 
     // Vars for primes
     private static final String primesFile = "/primes10000.txt";
-    public volatile ConcurrentHashMap<Integer, Index> primeMap = new ConcurrentHashMap<>();
+    public volatile ConcurrentHashMap<Integer, PrimeState> primeMap = new ConcurrentHashMap<>();
     private final ArrayList<String> primeList = new ArrayList<>();
     private static final int workSize = 150;
 
@@ -63,7 +62,7 @@ public class Node implements Runnable {
             public void workerFinished(String range) {
                 // Tell the leader this range is finished
                 if (leaderConnection != null) {
-                    addOutgoingMessage(leaderConnection, createMessage(leaderConnection.getName(), MessageType.WORK_STATE, range + ":" + Index.CLOSED));
+                    addOutgoingMessage(leaderConnection, createMessage(leaderConnection.getName(), MessageType.WORK_STATE, range + ":" + PrimeState.CLOSED));
                 }
             }
 
@@ -93,7 +92,7 @@ public class Node implements Runnable {
                 communicationHandler.handleWorkStateMessage(createMessage(
                         name,
                         MessageType.WORK_STATE,
-                        range + ":" + Index.CLOSED
+                        range + ":" + PrimeState.CLOSED
                 ), null);
 
                 // Distribute new work to myself
@@ -141,16 +140,12 @@ public class Node implements Runnable {
         this.port = port;
         this.name = name;
         this.state = State.FOLLOWER;
-        try {
-            fillPrimesMap();
-        } catch (Exception e) {
-            logError("filling primes map", e, true);
-        }
+        fillPrimesMap();
     }
 
 
     /**
-     * Creates a new Node running on a given adress and port.
+     * Creates a new Node running on a given address and port.
      *
      * @param address the address of the socket server
      * @param port    the port the socket server will run on
@@ -163,11 +158,7 @@ public class Node implements Runnable {
         this.port = port;
         this.name = name;
         this.state = State.FOLLOWER;
-        try {
-            fillPrimesMap();
-        } catch (Exception e) {
-            logError("filling primes map", e, true);
-        }
+        fillPrimesMap();
     }
 
     @Override
@@ -183,6 +174,7 @@ public class Node implements Runnable {
         raftThread.start();
 
         try {
+            // Wait for them to finish
             serverThread.join();
             communicatorThread.join();
             raftThread.join();
@@ -191,7 +183,6 @@ public class Node implements Runnable {
             logError("waiting for threads to finish", e, false);
         }
     }
-
 
     /**
      * This class will accept incoming connections and save them to a Connection class, which will be later used for
@@ -257,7 +248,6 @@ public class Node implements Runnable {
                     // Otherwise, the new connection might be a client
                     else if (firstMessage.getMessageType() == MessageType.RSA && "Client".equalsIgnoreCase(firstMessage.getSender())) {
                         if (publicKey.length() > 0) {
-                            // TODO: Change logging level to INFO
                             logger.warning("Client reconnected to me!");
                         } else {
                             logger.info("Received RSA information from the client!");
@@ -432,6 +422,13 @@ public class Node implements Runnable {
             }
         }
 
+        /*
+         * Every one of the following methods is following the same scheme:
+         * For every valid MessageType, a method is created which handles the incoming message with the corresponding type.
+         * Some Methods are given the connection object as well, since they directly respond to the message or need access
+         * to variables of the Connection.
+         */
+
         private void handleRSAMessage(Message incomingMessage) {
             logger.info("PublicKey received: " + incomingMessage.getPayload());
 
@@ -471,16 +468,15 @@ public class Node implements Runnable {
             if (!isClientConnectedToMe()) {
                 clientConnection = connections.get((String) incomingMessage.getPayload());
 
-                // TODO: Change logging level to INFO
-                logger.warning("Client is connected to " + clientConnection.getName());
+                logger.info("Client is connected to " + clientConnection.getName());
             }
         }
 
         private void handleWorkStateMessage(Message incomingMessage, Connection connection) {
             // Get the range and new State
             String[] information = ((String) incomingMessage.getPayload()).split(":");
-            int[] range = Arrays.stream(information[0].trim().split(",")).mapToInt(Integer::parseInt).toArray();
-            Index newState = Index.valueOf(information[1]);
+            int[] range = createRangeFromString(information[0]);
+            PrimeState newState = PrimeState.valueOf(information[1]);
 
             // Update the state of the primes
             updatePrimeState(range, newState, connection);
@@ -490,8 +486,23 @@ public class Node implements Runnable {
             logger.info("Received work package: " + incomingMessage.getPayload());
 
             // Tell the leader this Node will work on the range, if there is no other task running
-            if (leaderConnection != null && primeWorker != null && primeWorker.startWorking((String) incomingMessage.getPayload())) {
-                addOutgoingMessage(leaderConnection, createMessage(leaderConnection.getName(), MessageType.WORK_STATE, incomingMessage.getPayload() + ":" + Index.WORKING));
+            if (leaderConnection != null && primeWorker != null) {
+                String stringRange = (String) incomingMessage.getPayload();
+                int[] intRange = createRangeFromString(stringRange);
+
+                // Check whether this range is already closed
+                boolean isClosed = true;
+                for (int i = intRange[0]; i < intRange[1]; ++i) {
+                    isClosed = isClosed && primeMap.get(i) == PrimeState.CLOSED;
+                }
+
+                if (!isClosed) {
+                    if (primeWorker.startWorking(stringRange)) {
+                        addOutgoingMessage(leaderConnection, createMessage(leaderConnection.getName(), MessageType.WORK_STATE, createPrimeStateString(intRange, PrimeState.WORKING)));
+                    }
+                } else {
+                    addOutgoingMessage(leaderConnection, createMessage(leaderConnection.getName(), MessageType.WORK_STATE, createPrimeStateString(intRange, PrimeState.CLOSED)));
+                }
             }
         }
 
@@ -638,16 +649,22 @@ public class Node implements Runnable {
 
     // -------------------- [Primes related] -------------------- //
 
+    /**
+     * Iterates over the prime map and returns the next range, which is yet to be worked on.
+     *
+     * @return a range [lower, upper] which is next in line. [-1], if all indexes are either currently worked on or closed.
+     */
     private int[] getNextWorkingRange() {
+        // Get the starting point of the range
         int startRange = 0;
-        while (primeMap.get(startRange) != Index.OPEN && primeMap.get(startRange) != null) {
+        while (primeMap.get(startRange) != PrimeState.OPEN && primeMap.get(startRange) != null) {
             ++startRange;
         }
 
         if (primeMap.get(startRange) != null) {
             int endRange = startRange + workSize - 1;
 
-            // Adjust the range if its bigger than the size
+            // Adjust the range if it's bigger than the size of the prime map
             if (endRange >= primeMap.size()) {
                 endRange = primeMap.size() - 1;
 
@@ -678,9 +695,10 @@ public class Node implements Runnable {
         // Get the next range
         int[] nextRange = getNextWorkingRange();
 
+        // Check whether the range is valid
         if (nextRange[0] >= 0) {
             // Update the state
-            modifyPrimesMap(nextRange, Index.TENTATIVE);
+            modifyPrimesMap(nextRange, PrimeState.TENTATIVE);
 
             // The node has 5 seconds to confirm they're working on it
             Timer workTimeout = new Timer();
@@ -690,14 +708,14 @@ public class Node implements Runnable {
                     logger.info(this.node.getName() + " failed to response in time!");
                     this.node.setShouldBeWorking(false);
 
-                    modifyPrimesMap(nextRange[0], nextRange[1], Index.OPEN);
+                    modifyPrimesMap(nextRange[0], nextRange[1], PrimeState.OPEN);
                 }
             };
             workTimeout.schedule(workTimeoutTask, 5000);
             connection.setWorkTimeout(workTimeout);
 
             // Convert the range to a string
-            String stringRange = createRangeString(nextRange);
+            String stringRange = createStringFromRange(nextRange);
 
             // Force the Node to work
             addOutgoingMessage(connection, createMessage(connection.getName(), MessageType.WORK, stringRange));
@@ -707,16 +725,20 @@ public class Node implements Runnable {
         }
     }
 
+    /**
+     * Distributed work to the PrimeWorker of the Leader. This can't follow the same protocol used for other nodes, since
+     * there is no connection to send a message to.
+     */
     private void distributeWorkToMyself() {
         // Get the next range
         int[] nextRange = getNextWorkingRange();
 
         if (nextRange[0] >= 0) {
             // Update the state to working directly
-            modifyPrimesMap(nextRange, Index.WORKING);
+            modifyPrimesMap(nextRange, PrimeState.WORKING);
 
             // Start working
-            primeWorker.startWorking(createRangeString(nextRange));
+            primeWorker.startWorking(createStringFromRange(nextRange));
 
             logger.info("Distributed " + Arrays.toString(nextRange) + " to myself.");
         }
@@ -729,7 +751,7 @@ public class Node implements Runnable {
      * @param state      the new state of the primes
      * @param connection the connection which caused the state change
      */
-    private void updatePrimeState(int[] range, Index state, Connection connection) {
+    private void updatePrimeState(int[] range, PrimeState state, Connection connection) {
         logger.info("Prime range " + Arrays.toString(range) + " changed to " + state);
 
         // Change the states of the indexes
@@ -742,8 +764,8 @@ public class Node implements Runnable {
             if (connection != null) {
                 stopTimer(connection.getWorkTimeout());
 
-                connection.setShouldBeWorking(state == Index.WORKING);
-                connection.setWorkRange(state == Index.WORKING ? range : null);
+                connection.setShouldBeWorking(state == PrimeState.WORKING);
+                connection.setWorkRange(state == PrimeState.WORKING ? range : null);
             }
 
             if (!distributeWork) {
@@ -756,25 +778,45 @@ public class Node implements Runnable {
         }
     }
 
-    private synchronized void modifyPrimesMap(int[] range, Index state) {
+    /**
+     * Modifies the indexes in the prime map.
+     *
+     * @param range the range of indexes to modify
+     * @param state the new state of the indexes
+     */
+    private synchronized void modifyPrimesMap(int[] range, PrimeState state) {
         modifyPrimesMap(range[0], range[1], state);
     }
 
-    private synchronized void modifyPrimesMap(int lower, int upper, Index state) {
+    /**
+     * Modifies the indexes in the prime map.#+
+     *
+     * @param lower the lower border of the range
+     * @param upper the upper border of the range
+     * @param state the new state of the indexes in the given range
+     */
+    private synchronized void modifyPrimesMap(int lower, int upper, PrimeState state) {
         for (int i = lower; i <= upper; ++i) {
             primeMap.put(i, state);
         }
     }
 
-    private void fillPrimesMap() throws URISyntaxException, FileNotFoundException {
-        URL defaultImage = Node.class.getResource(primesFile);
-        assert defaultImage != null;
-        File imageFile = new File(defaultImage.toURI());
-        String primes = InputOutput.readFile(imageFile);
-        String[] primesList = primes.split(String.valueOf('\n'));
-        for (int i = 0; i < primesList.length; i++) {
-            primeList.add(primesList[i]);
-            primeMap.put(i, Index.OPEN);
+    /**
+     * Loads the primes from the file into the variables
+     */
+    private void fillPrimesMap() {
+        try {
+            URL defaultImage = Node.class.getResource(primesFile);
+            assert defaultImage != null;
+            File imageFile = new File(defaultImage.toURI());
+            String primes = InputOutput.readFile(imageFile);
+            String[] primesList = primes.split(String.valueOf('\n'));
+            for (int i = 0; i < primesList.length; i++) {
+                primeList.add(primesList[i]);
+                primeMap.put(i, PrimeState.OPEN);
+            }
+        } catch (Exception e) {
+            logError("filling primes map", e, true);
         }
     }
 
@@ -848,14 +890,29 @@ public class Node implements Runnable {
         }
     }
 
+    /**
+     * Gets the address of the client connection. This is either the address of the current node, or the node the client is connected to.
+     *
+     * @return the address of the node to send the information to
+     */
     private InetAddress getClientConnectionAddress() {
         return isClientConnectedToMe() ? address : clientConnection.getAddress();
     }
 
+    /**
+     * Gets the port of the client connection. This is either the port of the current node, or the node the client is connected to.
+     *
+     * @return the port of the node to send the information to
+     */
     private int getClientConnectionPort() {
         return isClientConnectedToMe() ? port : clientConnection.getPort();
     }
 
+    /**
+     * Checks whether the client is connected to this node.
+     *
+     * @return true, if the client is connected to this node.
+     */
     private boolean isClientConnectedToMe() {
         return clientConnection != null && clientConnection.getPort() == -1;
     }
@@ -904,16 +961,20 @@ public class Node implements Runnable {
      * @param message  the message to send
      */
     protected synchronized void addOutgoingMessage(Connection receiver, Message message) {
+        // Check whether the queue is empty
         ConcurrentLinkedQueue<Message> messages = outgoingMessages.get(receiver);
         if (messages == null) {
+            // Create a new queue
             messages = new ConcurrentLinkedQueue<>();
 
             outgoingMessages.put(receiver, messages);
         }
 
+        // Add the message to the queue
         outgoingMessages.get(receiver).add(message);
     }
 
+    // -------------------- [Raft] -------------------- //
 
     /**
      * Handles the timeout of a Node by removing it from the connections map and broadcasting the disconnect if this Node
@@ -935,6 +996,7 @@ public class Node implements Runnable {
             String connectionKey = createConnectionKey(connection.getAddress(), connection.getPort());
             logger.info(connection.getName() + " (" + connection.getState() + ") disconnected!");
 
+            // Check whether the disconnected node was the leader
             if (connection.getState() == State.LEADER) {
                 if (primeWorker != null) {
                     // Stop the prime worker
@@ -942,23 +1004,21 @@ public class Node implements Runnable {
                 }
 
                 // Reset every WORKING Index to OPEN
-                for (Map.Entry<Integer, Index> entry : primeMap.entrySet()) {
+                for (Map.Entry<Integer, PrimeState> entry : primeMap.entrySet()) {
                     int index = entry.getKey();
-                    if (entry.getValue() == Index.WORKING) {
-                        modifyPrimesMap(index, index, Index.OPEN);
+                    if (entry.getValue() == PrimeState.WORKING) {
+                        modifyPrimesMap(index, index, PrimeState.OPEN);
                     }
                 }
 
                 leaderConnection = null;
-            }
-
-            if (state == State.LEADER) {
+            } else if (state == State.LEADER) {
                 // Inform everyone of the disconnect
                 addBroadcastMessage(MessageType.DISCONNECT, connectionKey);
 
                 // Change the indexes this Node was working on to open
                 if (connection.getWorkRange() != null) {
-                    updatePrimeState(connection.getWorkRange(), Index.OPEN, connection);
+                    updatePrimeState(connection.getWorkRange(), PrimeState.OPEN, connection);
                 }
             }
 
@@ -986,8 +1046,10 @@ public class Node implements Runnable {
         hasVoted = false;
     }
 
+    // -------------------- [Other] -------------------- //
+
     /**
-     * Stops the execution of the SocketServer, CommunicationHandler and Raft protocol.
+     * Stops the execution of the SocketServer, CommunicationHandler, Raft protocol and the PrimeWorker.
      */
     public void stopNode() {
         if (nodeRunning) {
@@ -1006,7 +1068,7 @@ public class Node implements Runnable {
             }
 
             if (state == State.LEADER) {
-                // Stop the disconnection timeouts
+                // Stop the disconnection timeouts of the other nodes
                 for (Connection c : connections.values()) {
                     stopTimer(c.getNodeTimeout());
                 }

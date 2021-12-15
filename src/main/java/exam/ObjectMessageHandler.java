@@ -15,6 +15,12 @@ public class ObjectMessageHandler {
     private final String nodeName;
     private final Logger logger;
 
+    /**
+     * Creates the socket handler for the given node and socket.
+     *
+     * @param socket   the socket to read of and write on to
+     * @param nodeName the name of the node this handler is made for
+     */
     public ObjectMessageHandler(Socket socket, String nodeName) {
         this.socket = socket;
         this.nodeName = nodeName;
@@ -53,9 +59,6 @@ public class ObjectMessageHandler {
         // Get the output stream and try writing on it
         ObjectOutputStream outputStream = new ObjectOutputStream(socket.getOutputStream());
         outputStream.writeObject(message);
-
-
-//        outputStream.flush();
     }
 
     /**

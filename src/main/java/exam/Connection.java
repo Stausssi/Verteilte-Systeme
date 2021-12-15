@@ -25,10 +25,10 @@ public class Connection {
     /**
      * Creates a new Connection object.
      *
-     * @param address the internet address of the socket connection
-     * @param port the port of the socket server
-     * @param name the name of the Node
-     * @param socket the socket instance
+     * @param address        the internet address of the socket connection
+     * @param port           the port of the socket server
+     * @param name           the name of the Node
+     * @param socket         the socket instance
      * @param messageHandler the message handler
      */
     public Connection(InetAddress address, int port, String name, Socket socket, ObjectMessageHandler messageHandler) {
@@ -130,31 +130,65 @@ public class Connection {
         return workRange != null;
     }
 
+    /**
+     * Get the range this connection is working on
+     *
+     * @return the range
+     */
     public int[] getWorkRange() {
         return workRange;
     }
 
+    /**
+     * Set the range this connection is working on
+     *
+     * @param range the new range
+     */
     public void setWorkRange(int[] range) {
         this.workRange = range;
     }
 
+    /**
+     * Whether this Connection was given a range to work on
+     *
+     * @return true, if the node should be working
+     */
     public boolean shouldBeWorking() {
         return shouldBeWorking;
     }
 
+    /**
+     * Set whether the connection was given a working range
+     *
+     * @param shouldBeWorking true, if a range was distributed to this connection
+     */
     public void setShouldBeWorking(boolean shouldBeWorking) {
         this.shouldBeWorking = shouldBeWorking;
     }
 
+    /**
+     * Get the Timer which handles the timeout for work confirmation
+     *
+     * @return a Timer object
+     */
     public Timer getWorkTimeout() {
         return workTimeout;
     }
 
+    /**
+     * Set the Timer of the work timeout
+     *
+     * @param workTimeout the timer to set
+     */
     public void setWorkTimeout(Timer workTimeout) {
         this.workTimeout = workTimeout;
     }
 
-
+    /**
+     * Convert this object to a readable string
+     *
+     * @return a String representing this object
+     */
     @Override
     public String toString() {
         return "Connection{" +

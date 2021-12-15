@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.net.InetAddress;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.util.Arrays;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.logging.FileHandler;
@@ -47,6 +48,12 @@ public final class Utility {
         return removeHostFromAddress(address) + ":" + port;
     }
 
+    /**
+     * Create the connection key of a given connection
+     *
+     * @param connection the connection to create the key of
+     * @return "address:port"
+     */
     public static String createConnectionKey(Connection connection) {
         return createConnectionKey(connection.getAddress(), connection.getPort());
     }
@@ -63,19 +70,57 @@ public final class Utility {
 
     // -------------------- [Primes helpers] -------------------- //
 
-    public static String createRangeString(int[] range) {
+    /**
+     * Creates the string representation of a range
+     *
+     * @param range the range.
+     * @return "lower,upper"
+     */
+    public static String createStringFromRange(int[] range) {
         return range[0] + "," + range[1];
     }
 
-    public static String createRangeString(int lower, int upper) {
-        return createRangeString(new int[]{lower, upper});
+    /**
+     * Creates the string representation of a range
+     *
+     * @param lower the lower border of the range.
+     * @param upper the upper border of the range.
+     * @return "lower,upper"
+     */
+    public static String createStringFromRange(int lower, int upper) {
+        return createStringFromRange(new int[]{lower, upper});
     }
 
-    public static String createPrimeStateString(int[] range, Index state) {
-        return createRangeString(range) + ":" + state;
+    /**
+     * Converts a given String into a range array.
+     *
+     * @param range the string representation of the range
+     * @return an integer array containing the range
+     */
+    public static int[] createRangeFromString(String range) {
+        return Arrays.stream(range.trim().split(",")).mapToInt(Integer::parseInt).toArray();
     }
 
-    public static String createPrimeStateString(int lower, int upper, Index state) {
+    /**
+     * Creates a string containing information about the state of a range.
+     *
+     * @param range the range to set the state of
+     * @param state the new state of the range
+     * @return "lower,upper:state"
+     */
+    public static String createPrimeStateString(int[] range, PrimeState state) {
+        return createStringFromRange(range) + ":" + state;
+    }
+
+    /**
+     * Creates a string containing information about the state of a range.
+     *
+     * @param lower the lower border of the range to set the state of
+     * @param upper the upper border of the range to set the state of
+     * @param state the new state of the range
+     * @return "lower,upper:state"
+     */
+    public static String createPrimeStateString(int lower, int upper, PrimeState state) {
         return createPrimeStateString(new int[]{lower, upper}, state);
     }
 
@@ -130,10 +175,22 @@ public final class Utility {
 
     // -------------------- [Logging] -------------------- //
 
+    /**
+     * Get the unique logger name of the given node name.
+     *
+     * @param nodeName the name of the node to get the logger of
+     * @return "exam.logging.nodeName"
+     */
     public static String getLoggerName(String nodeName) {
         return "exam.logging." + nodeName;
     }
 
+    /**
+     * Initializes the Logger of the given node and attaches a file handler to it.
+     *
+     * @param name the name of the node to init the logger of
+     * @return the initialized logger object
+     */
     public static Logger initializeLogger(String name) {
         Logger logger = Logger.getLogger(getLoggerName(name));
         logger.setLevel(logLevel);

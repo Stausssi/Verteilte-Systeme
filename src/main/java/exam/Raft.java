@@ -6,6 +6,9 @@ import java.util.logging.Logger;
 
 import static exam.Utility.*;
 
+/**
+ * Implements the raft protocol
+ */
 class Raft implements Runnable {
     public static final int heartbeatInterval = 500;
     public static final int timeoutTolerance = 2500;
@@ -17,6 +20,7 @@ class Raft implements Runnable {
     private final TimerTask timeoutTask = new TimerTask() {
         @Override
         public void run() {
+            // Only run if there is at least a single node connected
             while (raftNode.connections.isEmpty()) {
                 try {
                     Thread.sleep(500);
@@ -25,6 +29,7 @@ class Raft implements Runnable {
                 }
             }
 
+            // Start the election if there is no leader
             if (!checkLeader()) {
                 startElection();
             }
@@ -33,6 +38,11 @@ class Raft implements Runnable {
 
     private Timer leaderHeartbeat;
 
+    /**
+     * Creates the raft protocol of the given node.
+     *
+     * @param node the node
+     */
     public Raft(Node node) {
         this.raftNode = node;
     }
@@ -48,7 +58,11 @@ class Raft implements Runnable {
         electionTimeout.schedule(timeoutTask, 2000, randomTimeout);
     }
 
-
+    /**
+     * Checks whether there is a leader in the current cluster.
+     *
+     * @return true, if there is a leader, false otherwise
+     */
     private boolean checkLeader() {
         // Check whether there is a node which is not a Follower
         for (Connection c : raftNode.connections.values()) {
@@ -62,6 +76,9 @@ class Raft implements Runnable {
         return false;
     }
 
+    /**
+     * Starts the Raft election by suggesting this node as the new leader
+     */
     private void startElection() {
         logger.info("Raft election started!");
         raftNode.state = State.CANDIDATE;
@@ -74,6 +91,9 @@ class Raft implements Runnable {
         );
     }
 
+    /**
+     * Starts the heartbeat of the leader.
+     */
     public void initLeaderHeartbeat() {
         leaderHeartbeat = restartTimer(
                 leaderHeartbeat,
@@ -92,6 +112,9 @@ class Raft implements Runnable {
         );
     }
 
+    /**
+     * Stops the raft protocol.
+     */
     public void stop() {
         stopTimer(leaderHeartbeat);
         stopTimer(electionTimeout);

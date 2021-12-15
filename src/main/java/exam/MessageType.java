@@ -1,7 +1,8 @@
 package exam;
 
 /**
- * Contains information about every supported type a Message object can be of
+ * Contains information about every supported type a Message object can be. It is a special enum containing a string
+ * representation for every type.
  */
 public enum MessageType {
     // A message of the type HELLO contains the name (sender) and port of a connection. It is the message that initiates
