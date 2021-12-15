@@ -1114,7 +1114,7 @@ public class Node implements Runnable {
         Option address = new Option("i", "address", true, "Node IP-address");
         address.setRequired(true);
         options.addOption(address);
-        Option primeList = new Option("pr", "primes", true, "Number of how many primes to use for calculation (100/1000/10000/100000");
+        Option primeList = new Option("pr", "primes", true, "Number of how many primes to use for calculation (100/1000/10000/100000)");
         primeList.setRequired(true);
         options.addOption(primeList);
 
@@ -1159,9 +1159,16 @@ public class Node implements Runnable {
 
         //Set Size for distributed Work packages
         switch (int_primes) {
-            case 100 -> clusterNode.setWorkSize(10);
-            case 1000 -> clusterNode.setWorkSize(100);
-            case 10000, 100000 -> clusterNode.setWorkSize(250);
+            case 100:
+                clusterNode.setWorkSize(10);
+                break;
+            case 1000:
+                clusterNode.setWorkSize(100);
+                break;
+            case 10000:
+            case 100000:
+                clusterNode.setWorkSize(250);
+                break;
         }
 
 		// Start the Node
