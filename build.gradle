@@ -21,7 +21,7 @@ dependencies {
 }
 
 task clientJar(type: Jar) {
-    from sourceSets.main
+    from "exam"
 
     manifest {
         attributes 'Main-Class': 'exam.Client'
@@ -31,7 +31,7 @@ task clientJar(type: Jar) {
 }
 
 task nodeJar(type: Jar) {
-    from sourceSets.main
+    from "exam"
 
     manifest {
         attributes 'Main-Class': 'exam.Node'
