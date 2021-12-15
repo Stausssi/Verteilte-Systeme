@@ -21,17 +21,21 @@ dependencies {
 }
 
 task clientJar(type: Jar) {
+    from sourceSets.all
+    
     manifest {
         attributes 'Main-Class': 'exam.Client'
     }
 
-    baseName("client")
+    baseName("Client")
 }
 
 task nodeJar(type: Jar) {
+    from sourceSets.all
+
     manifest {
         attributes 'Main-Class': 'exam.Node'
     }
 
-    baseName("nod")
+    baseName("Node")
 }
