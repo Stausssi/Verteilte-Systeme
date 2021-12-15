@@ -859,7 +859,7 @@ public class Node implements Runnable {
     }
 
     public void setPrimesFile(String primesFile) {
-        this.primesFile = "/primes" + primesFile + ".txt";
+        this.primesFile = "primes" + primesFile + ".txt";
     }
 
     public void setWorkSize(int workSize) {
