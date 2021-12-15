@@ -1,12 +1,16 @@
 package exam;
 
 import org.apache.commons.cli.*;
-import tasks.io.InputOutput;
 
-import java.io.File;
+import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.*;
+import java.io.InputStreamReader;
+import java.net.InetAddress;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.net.UnknownHostException;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -826,16 +830,29 @@ public class Node implements Runnable {
      */
     private void fillPrimesMap() {
         try {
-            URL resource = getClass().getResource(primesFile);
-            assert resource != null;
+            // Get the resource as a stream
+            InputStream fileStream = getClass().getClassLoader().getResourceAsStream(primesFile);
+            assert fileStream != null;
+            InputStreamReader streamReader = new InputStreamReader(fileStream, StandardCharsets.UTF_8);
+            BufferedReader reader = new BufferedReader(streamReader);
 
-            File imageFile = new File(resource.toExternalForm());
-            String primes = InputOutput.readFile(imageFile);
-            String[] primesList = primes.split(String.valueOf('\n'));
-            for (int i = 0; i < primesList.length; i++) {
-                primeList.add(primesList[i]);
-                primeMap.put(i, PrimeState.OPEN);
-            }
+            // Go over every line
+            String currentLine;
+            int index = -1;
+            do {
+                currentLine = reader.readLine();
+
+                // Save the line
+                primeList.add(currentLine);
+                primeMap.put(++index, PrimeState.OPEN);
+            } while (currentLine != null);
+
+            logger.info("Successfully read " + index + " primes!");
+
+            // Close the streams
+            reader.close();
+            streamReader.close();
+            fileStream.close();
         } catch (Exception e) {
             logError("filling primes map", e, true);
         }
@@ -1109,7 +1126,8 @@ public class Node implements Runnable {
                 socketServer.serverSocket.close();
             } catch (IOException e) {
                 logError("closing the ServerSocket", e, false);
-            } catch (NullPointerException ignored) {}
+            } catch (NullPointerException ignored) {
+            }
         }
     }
 
@@ -1163,10 +1181,10 @@ public class Node implements Runnable {
 
         Node clusterNode = new Node(InetAddress.getByName(nodeAddress), Integer.parseInt(nodePort), nodeName);
         clusterNode.setPrimesFile(primes);
+        clusterNode.fillPrimesMap();
 
         //Set which File to read primes from and load them
         int int_primes = Integer.parseInt(primes);
-        clusterNode.fillPrimesMap();
 
         //Set Size for distributed Work packages
         switch (int_primes) {
