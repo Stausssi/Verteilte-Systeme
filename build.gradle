@@ -20,9 +20,17 @@ dependencies {
     implementation group: 'commons-cli', name: 'commons-cli', version: '1.3.1'
 }
 
+sourceSets {
+    main {
+        java {
+            srcDirs = ["src/java"]
+        }
+        resources {
+            srcDirs = ["src/ressources"]
+        }
+    }
+}
 task clientJar(type: Jar) {
-    from "exam"
-
     manifest {
         attributes 'Main-Class': 'exam.Client'
     }
@@ -31,8 +39,6 @@ task clientJar(type: Jar) {
 }
 
 task nodeJar(type: Jar) {
-    from "exam"
-
     manifest {
         attributes 'Main-Class': 'exam.Node'
     }
