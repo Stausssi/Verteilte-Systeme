@@ -48,6 +48,7 @@ public class Node implements Runnable {
     public volatile ConcurrentHashMap<Integer, PrimeState> primeMap = new ConcurrentHashMap<>();
     private final ArrayList<String> primeList = new ArrayList<>();
     private int workSize;
+    private int previousClosedIndex = 0;
 
     // Callbacks for the prime worker. These are different for LEADER and FOLLOWER
     private static final HashMap<State, WorkerCallback> callbackMap = new HashMap<>();
@@ -694,9 +695,18 @@ public class Node implements Runnable {
      */
     private int[] getNextWorkingRange() {
         // Get the starting point of the range
-        int startRange = 0;
+        // Start at the index of the last closed range
+        int startRange = previousClosedIndex;
         while (primeMap.get(startRange) != PrimeState.OPEN && primeMap.get(startRange) != null) {
             ++startRange;
+        }
+
+        // If we're at the end, go from 0 again to check potentially missing ranges
+        if (primeMap.get(startRange) == null) {
+            startRange = 0;
+            while (primeMap.get(startRange) != PrimeState.OPEN && primeMap.get(startRange) != null) {
+                ++startRange;
+            }
         }
 
         if (primeMap.get(startRange) != null) {
@@ -793,11 +803,33 @@ public class Node implements Runnable {
             // Notify everyone of the change
             addBroadcastMessage(MessageType.WORK_STATE, createPrimeStateString(range, state));
 
+            // Stop the work timeout of the connection and reset control variables
             if (connection != null) {
                 stopTimer(connection.getWorkTimeout());
 
                 connection.setShouldBeWorking(state == PrimeState.WORKING);
                 connection.setWorkRange(state == PrimeState.WORKING ? range : null);
+            }
+
+            if (state == PrimeState.CLOSED) {
+                previousClosedIndex = range[1];
+            }
+
+            // distributeWork is false, if the last index was distributed
+            if (!distributeWork) {
+                // Check if every index is CLOSED
+                boolean everythingDone = true;
+                for (PrimeState primeState : primeMap.values()) {
+                    everythingDone = everythingDone && primeState == PrimeState.CLOSED;
+                }
+
+                if (everythingDone) {
+                    // Let everyone know that we are finished
+                    addBroadcastMessage(MessageType.FINISHED, "");
+
+                    // Also stop this node
+                    stopNode();
+                }
             }
         }
     }

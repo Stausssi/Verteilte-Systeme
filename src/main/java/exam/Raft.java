@@ -11,7 +11,7 @@ import static exam.Utility.*;
  */
 class Raft implements Runnable {
     public static final int heartbeatInterval = 500;
-    public static final int timeoutTolerance = 2500;
+    public static final int timeoutTolerance = 5000;
 
     private final Node raftNode;
     private Logger logger;

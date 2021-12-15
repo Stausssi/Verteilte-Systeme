@@ -13,7 +13,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 public final class Utility {
-    private static final Level logLevel = Level.INFO;
+    private static final Level logLevel = Level.FINEST;
     private static final boolean logToFile = false;
 
     // -------------------- [Message helpers] -------------------- //
