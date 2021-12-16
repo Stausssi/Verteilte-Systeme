@@ -1,5 +1,7 @@
 package exam;
 
+import org.apache.commons.cli.*;
+
 import java.io.File;
 import java.io.IOException;
 import java.net.InetAddress;
@@ -223,5 +225,44 @@ public final class Utility {
         }
 
         return logger;
+    }
+
+    // -------------------- [Argument Parsing] -------------------- //
+
+    /**
+     * Parses the command line with the given options.
+     * @param options valid options
+     * @param args the command line argument
+     * @return the parsed options with their values
+     */
+    public static CommandLine parseArguments(Options options, String[] args) {
+        CommandLineParser parser = new DefaultParser();
+        HelpFormatter formatter = new HelpFormatter();
+        CommandLine cl = null;
+
+        try {
+            cl = parser.parse(options, args);
+        } catch (ParseException e) {
+            System.out.println(e.getMessage());
+            formatter.printHelp("Invalid argument list", options);
+            System.exit(0);
+        }
+
+        return cl;
+    }
+
+    /**
+     * Checks whether the given prime count is valid
+     *
+     * @param primeCount the prime count
+     * @return true, if it is valid
+     * @throws IllegalArgumentException if the prime count is invalid
+     */
+    public static boolean isValidPrimeCount(int primeCount) throws IllegalArgumentException {
+        if (primeCount == 100 || primeCount == 1_000 || primeCount == 10_000 || primeCount == 100_000) {
+            return true;
+        } else {
+            throw new IllegalArgumentException("Invalid Prime Count!");
+        }
     }
 }

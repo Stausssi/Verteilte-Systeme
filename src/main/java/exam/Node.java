@@ -44,8 +44,7 @@ public class Node implements Runnable {
     private Connection clientConnection;
 
     // Vars for primes
-    private String primesFile;
-    public volatile ConcurrentHashMap<Integer, PrimeState> primeMap = new ConcurrentHashMap<>();
+    public final ConcurrentHashMap<Integer, PrimeState> primeMap = new ConcurrentHashMap<>();
     private final ArrayList<String> primeList = new ArrayList<>();
     private int workSize;
     private int previousWorkIndex = 0;
@@ -115,9 +114,9 @@ public class Node implements Runnable {
     }
 
     // Concurrent data storage for connections and messages
-    public volatile ConcurrentHashMap<String, Connection> connections = new ConcurrentHashMap<>();
-    public volatile ConcurrentHashMap<Connection, ConcurrentLinkedQueue<Message>> outgoingMessages = new ConcurrentHashMap<>();
-    public volatile ConcurrentLinkedQueue<Message> broadcastMessages = new ConcurrentLinkedQueue<>();
+    public final ConcurrentHashMap<String, Connection> connections = new ConcurrentHashMap<>();
+    public final ConcurrentHashMap<Connection, ConcurrentLinkedQueue<Message>> outgoingMessages = new ConcurrentHashMap<>();
+    public final ConcurrentLinkedQueue<Message> broadcastMessages = new ConcurrentLinkedQueue<>();
 
     // Raft stuff
     protected boolean hasVoted = false;
@@ -148,7 +147,6 @@ public class Node implements Runnable {
         this.port = port;
         this.name = name;
         this.state = State.FOLLOWER;
-
     }
 
 
@@ -166,7 +164,6 @@ public class Node implements Runnable {
         this.port = port;
         this.name = name;
         this.state = State.FOLLOWER;
-
     }
 
     @Override
@@ -869,12 +866,28 @@ public class Node implements Runnable {
     }
 
     /**
-     * Loads the primes from the file into the variables
+     * Loads the primes from the file into the variables. Also updates the workSize
+     *
+     * @param primeCount Number of primes. Translates to the resource file to read the primes from
+     * @throws Exception if any Error occurs
      */
-    private void fillPrimesMap() {
-        try {
+    private void initPrimes(int primeCount) throws Exception {
+        if (isValidPrimeCount(primeCount)) {
+            switch (primeCount) {
+                case 100:
+                    this.workSize = 10;
+                    break;
+                case 1000:
+                    this.workSize = 100;
+                    break;
+                case 10_000:
+                case 100_000:
+                    this.workSize = 250;
+                    break;
+            }
+
             // Get the resource as a stream
-            InputStream fileStream = getClass().getClassLoader().getResourceAsStream(primesFile);
+            InputStream fileStream = getClass().getClassLoader().getResourceAsStream("primes" + primeCount + ".txt");
             assert fileStream != null;
             InputStreamReader streamReader = new InputStreamReader(fileStream, StandardCharsets.UTF_8);
             BufferedReader reader = new BufferedReader(streamReader);
@@ -896,17 +909,7 @@ public class Node implements Runnable {
             reader.close();
             streamReader.close();
             fileStream.close();
-        } catch (Exception e) {
-            logError("filling primes map", e, true);
         }
-    }
-
-    public void setPrimesFile(String primesFile) {
-        this.primesFile = "primes" + primesFile + ".txt";
-    }
-
-    public void setWorkSize(int workSize) {
-        this.workSize = workSize;
     }
 
     // -------------------- [Connection related] -------------------- //
@@ -1016,7 +1019,7 @@ public class Node implements Runnable {
      * @param critical        Whether this error is critical to the Nodes' functionality
      */
     public void logError(String errorOccurrence, Exception e, boolean critical) {
-        logger.log(critical ? Level.SEVERE : Level.WARNING, "Encountered " + e.getClass().getSimpleName() + " while " + errorOccurrence + ": " + e.getMessage());
+        logger.log(critical ? Level.SEVERE : Level.WARNING, "Encountered " + e.getClass().getName() + " while " + errorOccurrence + ": " + e.getMessage());
 
         if (critical) {
             stopNode();
@@ -1199,66 +1202,39 @@ public class Node implements Runnable {
         options.addOption(hostAddress);
 
         // Command parsing
-        CommandLineParser parser = new DefaultParser();
-        HelpFormatter formatter = new HelpFormatter();
-        CommandLine cl = null;
+        CommandLine cl = parseArguments(options, args);
 
         try {
-            cl = parser.parse(options, args);
+            // Get parsed strings for node
+            String nodePort = cl.getOptionValue("port");
+            String nodeName = cl.getOptionValue("name");
+            String nodeAddress = cl.getOptionValue("address");
+            String primes = cl.getOptionValue("primes");
 
-        } catch (ParseException e) {
-            System.out.println(e.getMessage());
-            formatter.printHelp("Invalid argument list", options);
-            System.exit(0);
-        }
+            // Get parsed strings for cluster connection
+            String host_Port = cl.getOptionValue("host_port");
+            String host_Address = cl.getOptionValue("host_address");
 
-        // Get parsed strings for node
-        String nodePort = cl.getOptionValue("port");
-        String nodeName = cl.getOptionValue("name");
-        String nodeAddress = cl.getOptionValue("address");
-        String primes = cl.getOptionValue("primes");
+            // Start the Node
+            Node clusterNode = new Node(InetAddress.getByName(nodeAddress), Integer.parseInt(nodePort), nodeName);
+            clusterNode.initPrimes(Integer.parseInt(primes));
 
-        // Get parsed strings for cluster connection
-        String host_Port = cl.getOptionValue("host_port");
-        String host_Address = cl.getOptionValue("host_address");
+            Thread nodeThread = new Thread(clusterNode);
+            nodeThread.start();
 
-        Node clusterNode = new Node(InetAddress.getByName(nodeAddress), Integer.parseInt(nodePort), nodeName);
-        clusterNode.setPrimesFile(primes);
-        clusterNode.fillPrimesMap();
+            if (null != host_Port && null != host_Address) {
+                clusterNode.connectTo(host_Address, Integer.parseInt(host_Port));
+            }
 
-        //Set which File to read primes from and load them
-        int int_primes = Integer.parseInt(primes);
-
-        //Set Size for distributed Work packages
-        switch (int_primes) {
-            case 100:
-                clusterNode.setWorkSize(10);
-                break;
-            case 1000:
-                clusterNode.setWorkSize(100);
-                break;
-            case 10000:
-            case 100000:
-                clusterNode.setWorkSize(250);
-                break;
-        }
-
-        // Start the Node
-        Thread nodeThread = new Thread(clusterNode);
-        nodeThread.start();
-
-        //If
-
-        if (null != host_Port && null != host_Address) {
-            clusterNode.connectTo(host_Address, Integer.parseInt(host_Port));
-        }
-
-        try {
-            nodeThread.join();
-            System.exit(0);
-        } catch (InterruptedException e) {
-            e.printStackTrace();
+            try {
+                nodeThread.join();
+                System.exit(0);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        } catch (Exception e) {
+            System.out.println(e.getClass().getName() + " while parsing command line arguments: " + e);
+            System.exit(1);
         }
     }
-
 }

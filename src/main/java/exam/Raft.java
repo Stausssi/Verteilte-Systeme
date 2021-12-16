@@ -23,6 +23,7 @@ class Raft implements Runnable {
             // Only run if there is at least a single node connected
             while (raftNode.connections.isEmpty()) {
                 try {
+                    //noinspection BusyWait
                     Thread.sleep(500);
                 } catch (InterruptedException e) {
                     e.printStackTrace();
@@ -55,7 +56,9 @@ class Raft implements Runnable {
 
         // Create random timeout for thread for election between 130 and 1000 milliseconds
         long randomTimeout = (long) (Math.random() * (1000 - 130 + 1) + 130);
-        electionTimeout.schedule(timeoutTask, 2000, randomTimeout);
+        try {
+            electionTimeout.schedule(timeoutTask, 2000, randomTimeout);
+        } catch (IllegalStateException ignored) {}
     }
 
     /**
@@ -119,6 +122,8 @@ class Raft implements Runnable {
         stopTimer(leaderHeartbeat);
         stopTimer(electionTimeout);
 
-        logger.info("Raft shutdown!");
+        if (logger != null) {
+            logger.info("Raft shutdown!");
+        }
     }
 }

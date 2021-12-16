@@ -10,8 +10,7 @@ import java.net.UnknownHostException;
 import java.util.*;
 import java.util.logging.Logger;
 
-import static exam.Utility.createMessage;
-import static exam.Utility.initializeLogger;
+import static exam.Utility.*;
 
 /**
  * This class represents the client, which will connect to the cluster of Nodes and send the RSA request.
@@ -70,7 +69,6 @@ public class Client {
         long endTime = 0;
 
         do {
-            ++reconnectCount;
             previousCalculation = startTime == 0 ? 0 : System.currentTimeMillis() - startTime;
 
             // Connect to any socket in the system
@@ -80,6 +78,8 @@ public class Client {
                 Socket cluster = new Socket(clusterConnection.getKey(), clusterConnection.getValue());
                 ObjectMessageHandler messageHandler = new ObjectMessageHandler(cluster, "Client");
                 logger.info("Connected to: " + cluster);
+
+                ++reconnectCount;
 
                 // Send the RSA information
                 messageHandler.write(createMessage("Cluster", MessageType.RSA, publicKey));
@@ -166,15 +166,14 @@ public class Client {
             double calcDuration = (endTime - startTime + previousCalculation) / 1000;
 
             logger.info("The calculation took " + calcDuration + " second(s) with " + reconnectCount + " reconnect(s)!");
-        } else {
+        } else if (reconnectCount >= 0) {
             logger.severe("The cluster couldn't solve the problem!");
+        } else {
+            logger.info("Couldn't reach the cluster!");
         }
     }
 
     public static void main(String[] args) {
-        Client client = new Client();
-
-
         // CLI options to create Client
         Options options = new Options();
         Option primeList = new Option("pr", "primes", true, "Number of how many primes to use for calculation (100/1000/10000/100000)");
@@ -183,33 +182,32 @@ public class Client {
         Option clusterAddress = new Option("i", "caddress", true, "Define address of a Cluster node to address");
         clusterAddress.setRequired(true);
         options.addOption(clusterAddress);
-        Option clusterPort = new Option("p", "cport", true,"Port of Node in cluster to connect to");
+        Option clusterPort = new Option("p", "cport", true, "Port of Node in cluster to connect to");
         clusterPort.setRequired(true);
         options.addOption(clusterPort);
 
         // Command parsing
-        CommandLineParser parser = new DefaultParser();
-        HelpFormatter formatter = new HelpFormatter();
-        CommandLine cl = null;
+        CommandLine cl = parseArguments(options, args);
 
         try {
-            cl = parser.parse(options, args);
+            Client client = new Client();
 
-        } catch (ParseException e) {
-            System.out.println(e.getMessage());
-            formatter.printHelp("Invalid argument list", options);
-            System.exit(0);
+            // Get parsed strings for client
+            client.address = cl.getOptionValue("caddress");
+            client.port = Integer.parseInt(cl.getOptionValue("cport"));
+
+            int primeCount = Integer.parseInt(cl.getOptionValue("primes"));
+
+            if (isValidPrimeCount(primeCount)) {
+                client.primeCount = primeCount;
+                client.encrypted = cipherMap.get(client.primeCount);
+                client.publicKey = keyMap.get(client.primeCount);
+
+                client.work();
+            }
+        } catch (Exception e) {
+            System.out.println(e.getClass().getName() + " while parsing command line arguments: " + e);
+            System.exit(1);
         }
-
-        // Get parsed strings for client
-        String primesNumber = cl.getOptionValue("primes");
-        String port = cl.getOptionValue("cport");
-        client.address = cl.getOptionValue("caddress");
-        client.port = Integer.parseInt(port);
-        client.primeCount = Integer.parseInt(primesNumber);
-        client.encrypted = cipherMap.get(client.primeCount);
-        client.publicKey = keyMap.get(client.primeCount);
-        client.work();
-
     }
 }
