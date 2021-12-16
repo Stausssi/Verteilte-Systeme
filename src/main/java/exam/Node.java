@@ -1,6 +1,8 @@
 package exam;
 
-import org.apache.commons.cli.*;
+import org.apache.commons.cli.CommandLine;
+import org.apache.commons.cli.Option;
+import org.apache.commons.cli.Options;
 
 import java.io.BufferedReader;
 import java.io.IOException;
