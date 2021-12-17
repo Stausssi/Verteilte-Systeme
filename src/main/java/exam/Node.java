@@ -205,7 +205,7 @@ public class Node implements Runnable {
                 try {
                     // Open the ServerSocket
                     this.serverSocket = new ServerSocket(port, MAX_INCOMING_CLIENTS, address);
-                } catch (IOException e) {
+                } catch (IOException | IllegalArgumentException | SecurityException e) {
                     logError("starting the SocketServer", e, true);
                 }
 
@@ -962,7 +962,7 @@ public class Node implements Runnable {
                         }
                     }
                 }
-            } catch (IOException e) {
+            } catch (IOException | IllegalArgumentException | SecurityException e) {
                 logError("connecting to a new connection", e, true);
             }
         }

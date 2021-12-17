@@ -26,7 +26,7 @@ public class Client {
     private static final HashMap<Integer, String> keyMap;
 
     //For cluster connection
-    private String address;
+    private InetAddress address;
     private int port;
 
     static {
@@ -57,12 +57,8 @@ public class Client {
     private void work() {
         logger.info("Started the client!");
 
-        try {
-            // Add the default node to the connections
-            otherConnections.add(new AbstractMap.SimpleEntry<>(InetAddress.getByName(address), port));
-        } catch (UnknownHostException e) {
-            e.printStackTrace();
-        }
+        // Add the default node to the connections
+        otherConnections.add(new AbstractMap.SimpleEntry<>(address, port));
 
         // Needed for the timing
         int reconnectCount = -1;
@@ -156,9 +152,9 @@ public class Client {
                         }
                     }
                 }
-            } catch (IOException e) {
+            } catch (IOException | IllegalArgumentException | SecurityException e) {
                 if (!primesFound) {
-                    logger.warning("Exception while communicating with the cluster: " + e);
+                    logger.warning(e.getClass().getName() + " while communicating with the cluster: " + e.getMessage());
                 }
             }
         } while (!otherConnections.isEmpty() && !primesFound);
@@ -195,7 +191,7 @@ public class Client {
             Client client = new Client();
 
             // Get parsed strings for client
-            client.address = cl.getOptionValue("caddress");
+            client.address = InetAddress.getByName(cl.getOptionValue("caddress"));
             client.port = Integer.parseInt(cl.getOptionValue("cport"));
 
             int primeCount = Integer.parseInt(cl.getOptionValue("primes"));
